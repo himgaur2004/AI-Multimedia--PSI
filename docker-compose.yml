@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: omnimind-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PROJECT_NAME=OmniMind - AI Document & Multimedia Q&A
+      - SECRET_KEY=production_secret_key_change_me_before_deploying_2026
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DATABASE_URL=sqlite:///./omnimind.db
+      - MAX_FILE_SIZE_MB=100
+      - RATE_LIMIT_PER_MINUTE=60
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_db:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - omnimind-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: omnimind-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - omnimind-net
+
+volumes:
+  backend_uploads:
+  backend_db:
+
+networks:
+  omnimind-net:
+    driver: bridge
