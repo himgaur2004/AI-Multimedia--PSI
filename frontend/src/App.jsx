@@ -15,6 +15,7 @@ function Icon({ name, size = 18 }) {
     spark: <><path d="m12 3-1.2 4.8L6 9l4.8 1.2L12 15l1.2-4.8L18 9l-4.8-1.2Z" /><path d="m19 15-.6 2.4L16 18l2.4.6L19 21l.6-2.4L22 18l-2.4-.6Z" /></>,
     upload: <><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></>,
     key: <><circle cx="7.5" cy="15.5" r="4.5" /><path d="m21 3-9.5 9.5M15.5 7.5l3 3M18 5l2 2" /></>,
+    trash: <><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></>,
   };
   return (
     <svg
@@ -74,7 +75,10 @@ export function App() {
   const [uploadedToast, setUploadedToast] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamedText, setStreamedText] = useState('');
-  const [activeView, setActiveView] = useState('signal'); // 'signal', 'summary', 'settings'
+  const [activeView, setActiveView] = useState('signal'); // 'signal' | 'library'
+  const [libraryFilter, setLibraryFilter] = useState('All');
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [previewAsset, setPreviewAsset] = useState(null);
   const [summaryData, setSummaryData] = useState(null);
   const [topics, setTopics] = useState([]);
   const [user, setUser] = useState(null);
@@ -84,6 +88,7 @@ export function App() {
 
   const fileInputRef = useRef(null);
   const mediaRef = useRef(null);
+  const previewMediaRef = useRef(null);
   const chatEndRef = useRef(null);
 
   // Initialize Auth and Source List
@@ -106,7 +111,6 @@ export function App() {
     init();
   }, []);
 
-  // Sync media time
   const handleMediaTimeUpdate = () => {
     if (mediaRef.current) {
       setCurrentTime(mediaRef.current.currentTime);
@@ -135,15 +139,17 @@ export function App() {
           accent: d.file_type === 'pdf' ? 'amber' : d.file_type === 'video' ? 'cyan' : 'violet',
           active: idx === 0,
           duration_seconds: d.duration_seconds,
+          created_at: d.created_at,
+          file_size: d.file_size,
         }));
         setSources(formatted);
         selectSource(formatted[0].id);
       } else {
-        // Default initial demonstration sources
+        // High-signal fallback demonstration sources
         const fallback = [
-          { id: 'demo-1', type: 'pdf', name: 'The Future of Remote Work.pdf', meta: 'PDF / 18 pages / 2.4 MB', accent: 'amber', active: true },
-          { id: 'demo-2', type: 'audio', name: 'Team All-Hands — May 2024', meta: 'AUDIO / 48 MIN', accent: 'violet', active: false },
-          { id: 'demo-3', type: 'video', name: 'Founder interview — Alex Chen', meta: 'VIDEO / 32 MIN', accent: 'cyan', active: false },
+          { id: 'demo-1', type: 'pdf', name: 'The Future of Remote Work.pdf', meta: 'PDF / 18 pages / 2.4 MB', accent: 'amber', active: true, snippet: 'Comprehensive analysis on asynchronous work, attention protection, and distributed team productivity.' },
+          { id: 'demo-2', type: 'audio', name: 'Team All-Hands — May 2024', meta: 'AUDIO / 48 MIN', accent: 'violet', active: false, snippet: 'Discussion on operating rhythms, reducing meeting latency, and making availability visible.' },
+          { id: 'demo-3', type: 'video', name: 'Founder interview — Alex Chen', meta: 'VIDEO / 32 MIN', accent: 'cyan', active: false, snippet: 'Insights on product positioning, high-cadence shipping, and building defensible AI workflows.' },
         ];
         setSources(fallback);
         setActiveSource(fallback[0]);
@@ -187,8 +193,7 @@ export function App() {
         word_count: (doc.full_text || '').split(/\s+/).length,
       });
       setTopics(doc.topics || []);
-      
-      // Fetch chat history for this document
+
       const history = await api.getChatHistory(id);
       if (history && history.length > 0) {
         setMessages(
@@ -209,7 +214,6 @@ export function App() {
     }
   };
 
-  // Upload handler for file picker & drag and drop
   const handleUpload = async (file) => {
     if (!file) return;
     try {
@@ -233,7 +237,36 @@ export function App() {
     }
   };
 
-  // Chat Ask function with real-time token streaming
+  const handleDeleteSource = async (id) => {
+    if (!confirm('Are you sure you want to remove this source and its vector index from the room?')) return;
+    try {
+      if (!String(id).startsWith('demo-')) {
+        await api.deleteDocument(id);
+      }
+      const updated = sources.filter((s) => s.id !== id);
+      setSources(updated);
+      if (previewAsset?.id === id) setPreviewAsset(null);
+      if (activeSource?.id === id && updated.length > 0) {
+        selectSource(updated[0].id);
+      }
+    } catch (err) {
+      alert(`Failed to delete source: ${err.message}`);
+    }
+  };
+
+  const openAssetPreview = async (sourceItem) => {
+    try {
+      if (!String(sourceItem.id).startsWith('demo-')) {
+        const fullDoc = await api.getDocument(sourceItem.id);
+        setPreviewAsset({ ...sourceItem, ...fullDoc });
+      } else {
+        setPreviewAsset(sourceItem);
+      }
+    } catch (err) {
+      setPreviewAsset(sourceItem);
+    }
+  };
+
   const ask = async (customPrompt) => {
     const promptText = customPrompt || query.trim();
     if (!promptText || isStreaming) return;
@@ -257,8 +290,7 @@ export function App() {
         (citations) => {
           setIsStreaming(false);
           setStreamedText('');
-          
-          // Parse potential bullet points from text
+
           const lines = accumulated.split('\n').map((l) => l.trim());
           const bullets = lines
             .filter((l) => l.startsWith('•') || l.startsWith('-') || l.startsWith('*'))
@@ -294,7 +326,6 @@ export function App() {
         }
       );
     } else {
-      // Fallback local simulated reasoning for initial demo sources
       setTimeout(() => {
         setIsStreaming(false);
         setMessages((prev) => [
@@ -317,8 +348,8 @@ export function App() {
     }
   };
 
-  // Seek and play media to specific timestamp when citation or moment is clicked
   const jumpToTimestamp = (seconds, label) => {
+    setActiveView('signal');
     setPlaying(true);
     if (mediaRef.current) {
       mediaRef.current.currentTime = seconds;
@@ -362,6 +393,15 @@ export function App() {
   const visibleSources = sources.filter(
     (s) => filter === 'All' || s.type === filter.toLowerCase()
   );
+
+  const filteredLibrarySources = sources.filter((s) => {
+    const matchesTab = libraryFilter === 'All' || s.type === libraryFilter.toLowerCase();
+    const matchesSearch =
+      !librarySearch ||
+      s.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
+      (s.meta && s.meta.toLowerCase().includes(librarySearch.toLowerCase()));
+    return matchesTab && matchesSearch;
+  });
 
   const activeMediaUrl = activeSource && !activeSource.id.startsWith('demo-')
     ? api.getMediaStreamUrl(activeSource.id)
@@ -435,11 +475,18 @@ export function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">
-              THURSDAY / 09:41 <span className="status-dot" /> LIVE CONTEXT
+              {activeView === 'library' ? '02 / ARCHIVE' : 'THURSDAY / 09:41'}{' '}
+              <span className="status-dot" /> LIVE CONTEXT
             </p>
-            <h1>Make sense of the signal.</h1>
+            <h1>
+              {activeView === 'library'
+                ? 'Source Archive & Library.'
+                : 'Make sense of the signal.'}
+            </h1>
             <p className="subhead">
-              A private room for turning scattered media into clear decisions.
+              {activeView === 'library'
+                ? 'Search, inspect full transcripts, and jump directly into grounded conversation.'
+                : 'A private room for turning scattered media into clear decisions.'}
             </p>
           </div>
           <div className="top-actions">
@@ -454,14 +501,22 @@ export function App() {
             <button
               className="icon-button"
               aria-label="Search"
-              onClick={() => document.querySelector('.question-box input')?.focus()}
+              onClick={() => {
+                if (activeView === 'library') {
+                  document.querySelector('.library-search-box input')?.focus();
+                } else {
+                  document.querySelector('.question-box input')?.focus();
+                }
+              }}
             >
               <Icon name="search" />
             </button>
             <button
               className="help-button"
               title="System Documentation"
-              onClick={() => alert('OmniMind Lumen: Grounded RAG with Whisper ASR timestamps and instant playback seeking.')}
+              onClick={() =>
+                alert('OmniMind Lumen: Grounded RAG with Whisper ASR timestamps and instant playback seeking.')
+              }
             >
               ?
             </button>
@@ -471,410 +526,536 @@ export function App() {
           </div>
         </header>
 
-        {/* 2-Column Grid Workspace */}
-        <div className="workspace-grid">
-          {/* Left Column: Ask & Conversation Trace */}
-          <section className="main-column">
-            {/* 01 / ASK Section */}
-            <div className="section-heading">
-              <div>
-                <div className="section-index">01 / ASK</div>
-                <h2>Conversation, grounded.</h2>
-                <p>Every answer is connected to a source, a page, or a moment.</p>
+        {/* ─── DYNAMIC VIEW ROUTER: LIBRARY TAB OR SIGNAL ROOM ─── */}
+        {activeView === 'library' ? (
+          /* ==========================================================
+             LIBRARY VIEW: Fully Functional Management & Inspection
+             ========================================================== */
+          <section className="library-view">
+            {/* Library Toolbar */}
+            <div className="library-toolbar">
+              <div className="library-search-box">
+                <Icon name="search" size={15} />
+                <input
+                  type="text"
+                  placeholder="Search sources by name, keyword, or format..."
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                />
+                {librarySearch && (
+                  <button
+                    onClick={() => setLibrarySearch('')}
+                    style={{ background: 'none', border: 'none', color: 'var(--dim)', fontSize: '12px' }}
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
+
+              {/* Filter Tabs */}
+              <div className="filter-tabs" style={{ margin: 0, border: 'none' }}>
+                {['All', 'PDF', 'Audio', 'Video'].map((tab) => {
+                  const count =
+                    tab === 'All'
+                      ? sources.length
+                      : sources.filter((s) => s.type === tab.toLowerCase()).length;
+                  return (
+                    <button
+                      key={tab}
+                      className={libraryFilter === tab ? 'active' : ''}
+                      onClick={() => setLibraryFilter(tab)}
+                    >
+                      {tab} <span style={{ opacity: 0.6 }}>({count})</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Upload Action */}
               <button
                 className="upload-button"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Icon name="upload" size={16} /> Add source
+                <Icon name="upload" size={15} /> Add source
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                hidden
-                accept=".pdf,audio/*,video/*,.mp3,.wav,.m4a,.mp4,.webm"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) handleUpload(e.target.files[0]);
-                }}
-              />
             </div>
 
-            {uploadedToast && (
-              <div className="upload-toast">
-                <span className="pulse-dot" /> Source ingested & indexed. It is ready to explore.
+            {/* Library Cards Grid */}
+            {filteredLibrarySources.length === 0 ? (
+              <div className="empty-conversation" style={{ padding: '48px 20px' }}>
+                No sources match your filter. Upload a PDF, audio, or video file to populate your library.
               </div>
-            )}
-
-            {/* Prompt Card */}
-            <div className="prompt-card">
-              <div className="prompt-top">
-                <div className="prompt-icon">
-                  <Icon name="spark" size={20} />
-                </div>
-                <div className="signal-readout">
-                  <span>CONTEXT WINDOW</span>
-                  <strong>{sources.length.toString().padStart(2, '0')} sources / 100% ready</strong>
-                </div>
-              </div>
-              <div className="prompt-copy">
-                <h3>What are you trying to understand?</h3>
-                <p>Ask for a theme, a decision, or the exact moment something was said.</p>
-              </div>
-              <button
-                className="prompt-suggestion"
-                onClick={() => ask('Find the moments where the team discusses focus')}
-              >
-                <span>Suggested path</span> Find moments about focus <span className="arrow">↗</span>
-              </button>
-              <div className="question-box">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      ask();
-                    }
-                  }}
-                  placeholder="Ask the room anything..."
-                  aria-label="Ask the room anything"
-                  disabled={isStreaming}
-                />
-                <button
-                  onClick={() => ask()}
-                  aria-label="Send question"
-                  disabled={!query.trim() || isStreaming}
-                >
-                  <Icon name="send" size={17} />
-                </button>
-              </div>
-            </div>
-
-            {/* 02 / TRACE Section (Conversation) */}
-            <div className="conversation-header">
-              <div>
-                <div className="section-index">02 / TRACE</div>
-                <h2>Conversation</h2>
-              </div>
-              <button onClick={() => setMessages([])}>Clear room</button>
-            </div>
-
-            <div className="conversation">
-              {messages.length === 0 && !isStreaming ? (
-                <div className="empty-conversation">
-                  The room is quiet. Ask a question above or pick a suggested path to begin.
-                </div>
-              ) : (
-                messages.map((message, index) => (
-                  <div
-                    className={`message ${message.from}`}
-                    key={`${message.from}-${index}`}
-                  >
-                    {message.from === 'ai' && (
-                      <div className="ai-badge">
-                        <Icon name="spark" size={14} />
+            ) : (
+              <div className="library-grid">
+                {filteredLibrarySources.map((source) => (
+                  <div key={source.id} className="library-card">
+                    <div className="library-card-header">
+                      <SourceIcon type={source.type} />
+                      <div className="library-card-info">
+                        <h3 title={source.name}>{source.name}</h3>
+                        <p>{source.meta}</p>
                       </div>
-                    )}
-                    <div className="message-body">
-                      <div className="message-meta">
-                        {message.from === 'ai' ? 'LUMEN / SYNTHESIS' : 'YOU'}{' '}
-                        <span>{message.from === 'ai' ? 'GROUNDED' : 'NOW'}</span>
-                      </div>
-                      <p>{message.text}</p>
-                      {message.bullets && (
-                        <ul>
-                          {message.bullets.map((bullet, bi) => (
-                            <li key={bi}>{bullet}</li>
-                          ))}
-                        </ul>
-                      )}
-                      {message.citations && message.citations.length > 0 && (
-                        <div className="citations">
-                          {message.citations.map((citation, ci) => {
-                            const isAudio = citation.page.includes(':') || citation.timestamp !== null;
-                            return (
-                              <button
-                                key={ci}
-                                onClick={() => {
-                                  if (citation.timestamp !== null && citation.timestamp !== undefined) {
-                                    jumpToTimestamp(citation.timestamp, citation.label);
-                                  } else if (citation.page.includes(':')) {
-                                    jumpToTimestamp(parseSeconds(citation.page), citation.label);
-                                  }
-                                }}
-                                title="Click to play relevant moment"
-                              >
-                                <SourceIcon type={isAudio ? 'audio' : 'pdf'} />
-                                <span>{citation.label}</span>
-                                <small>{citation.page}</small>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                      <span className="library-status-chip">
+                        <span className="pulse-dot" /> Grounded
+                      </span>
                     </div>
-                  </div>
-                ))
-              )}
 
-              {/* Streaming Assistant Response */}
-              {isStreaming && (
-                <div className="message ai">
-                  <div className="ai-badge">
-                    <Icon name="spark" size={14} />
-                  </div>
-                  <div className="message-body">
-                    <div className="message-meta">
-                      LUMEN / SYNTHESIS <span>STREAMING</span>
-                    </div>
-                    <p>
-                      {streamedText}
-                      <span className="streaming-cursor" />
+                    <p className="library-summary-snippet">
+                      {source.snippet ||
+                        'Analyzed and indexed with LangChain vector embeddings. Granular timestamp intervals available for real-time seek.'}
                     </p>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
 
-            {/* Executive Summary Drawer */}
-            {summaryData && (
-              <div className="summary-drawer">
-                <div className="section-index">EXECUTIVE BRIEF</div>
-                <h4>Synthesized Overview</h4>
-                <p>{summaryData.executive_summary}</p>
-                {summaryData.key_points && (
-                  <ul>
-                    {summaryData.key_points.map((kp, kpi) => (
-                      <li key={kpi}>{kp}</li>
-                    ))}
-                  </ul>
-                )}
+                    <div className="library-card-actions">
+                      <button
+                        className="btn-pill"
+                        onClick={() => {
+                          selectSource(source.id);
+                          setActiveView('signal');
+                        }}
+                        title="Enter Signal Room with this source"
+                      >
+                        Enter Room ↗
+                      </button>
+                      <button
+                        className="btn-pill"
+                        onClick={() => openAssetPreview(source)}
+                        title="Inspect full details, transcript & playback"
+                      >
+                        Inspect & Play
+                      </button>
+                      <button
+                        className="btn-danger-ghost"
+                        onClick={() => handleDeleteSource(source.id)}
+                        title="Delete source"
+                      >
+                        <Icon name="trash" size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </section>
-
-          {/* Right Column: Source Constellation, Orbits & Moments */}
-          <aside className="inspector">
-            {/* 03 / EVIDENCE Section */}
-            <div className="inspector-head">
-              <div>
-                <div className="section-index">03 / EVIDENCE</div>
-                <h2>Source constellation</h2>
+        ) : (
+          /* ==========================================================
+             SIGNAL ROOM WORKSPACE (2-COLUMN EDITORIAL LAYOUT)
+             ========================================================== */
+          <div className="workspace-grid">
+            {/* Left Column: Ask & Conversation Trace */}
+            <section className="main-column">
+              {/* 01 / ASK Section */}
+              <div className="section-heading">
+                <div>
+                  <div className="section-index">01 / ASK</div>
+                  <h2>Conversation, grounded.</h2>
+                  <p>Every answer is connected to a source, a page, or a moment.</p>
+                </div>
+                <button
+                  className="upload-button"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Icon name="upload" size={16} /> Add source
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  hidden
+                  accept=".pdf,audio/*,video/*,.mp3,.wav,.m4a,.mp4,.webm"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+                  }}
+                />
               </div>
-              <button
-                className="add-circle"
-                aria-label="Add source"
+
+              {uploadedToast && (
+                <div className="upload-toast">
+                  <span className="pulse-dot" /> Source ingested & indexed. It is ready to explore.
+                </div>
+              )}
+
+              {/* Prompt Card */}
+              <div className="prompt-card">
+                <div className="prompt-top">
+                  <div className="prompt-icon">
+                    <Icon name="spark" size={20} />
+                  </div>
+                  <div className="signal-readout">
+                    <span>CONTEXT WINDOW</span>
+                    <strong>{sources.length.toString().padStart(2, '0')} sources / 100% ready</strong>
+                  </div>
+                </div>
+                <div className="prompt-copy">
+                  <h3>What are you trying to understand?</h3>
+                  <p>Ask for a theme, a decision, or the exact moment something was said.</p>
+                </div>
+                <button
+                  className="prompt-suggestion"
+                  onClick={() => ask('Find the moments where the team discusses focus')}
+                >
+                  <span>Suggested path</span> Find moments about focus <span className="arrow">↗</span>
+                </button>
+                <div className="question-box">
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        ask();
+                      }
+                    }}
+                    placeholder="Ask the room anything..."
+                    aria-label="Ask the room anything"
+                    disabled={isStreaming}
+                  />
+                  <button
+                    onClick={() => ask()}
+                    aria-label="Send question"
+                    disabled={!query.trim() || isStreaming}
+                  >
+                    <Icon name="send" size={17} />
+                  </button>
+                </div>
+              </div>
+
+              {/* 02 / TRACE Section (Conversation) */}
+              <div className="conversation-header">
+                <div>
+                  <div className="section-index">02 / TRACE</div>
+                  <h2>Conversation</h2>
+                </div>
+                <button onClick={() => setMessages([])}>Clear room</button>
+              </div>
+
+              <div className="conversation">
+                {messages.length === 0 && !isStreaming ? (
+                  <div className="empty-conversation">
+                    The room is quiet. Ask a question above or pick a suggested path to begin.
+                  </div>
+                ) : (
+                  messages.map((message, index) => (
+                    <div
+                      className={`message ${message.from}`}
+                      key={`${message.from}-${index}`}
+                    >
+                      {message.from === 'ai' && (
+                        <div className="ai-badge">
+                          <Icon name="spark" size={14} />
+                        </div>
+                      )}
+                      <div className="message-body">
+                        <div className="message-meta">
+                          {message.from === 'ai' ? 'LUMEN / SYNTHESIS' : 'YOU'}{' '}
+                          <span>{message.from === 'ai' ? 'GROUNDED' : 'NOW'}</span>
+                        </div>
+                        <p>{message.text}</p>
+                        {message.bullets && (
+                          <ul>
+                            {message.bullets.map((bullet, bi) => (
+                              <li key={bi}>{bullet}</li>
+                            ))}
+                          </ul>
+                        )}
+                        {message.citations && message.citations.length > 0 && (
+                          <div className="citations">
+                            {message.citations.map((citation, ci) => {
+                              const isAudio = citation.page.includes(':') || citation.timestamp !== null;
+                              return (
+                                <button
+                                  key={ci}
+                                  onClick={() => {
+                                    if (citation.timestamp !== null && citation.timestamp !== undefined) {
+                                      jumpToTimestamp(citation.timestamp, citation.label);
+                                    } else if (citation.page.includes(':')) {
+                                      jumpToTimestamp(parseSeconds(citation.page), citation.label);
+                                    }
+                                  }}
+                                  title="Click to play relevant moment"
+                                >
+                                  <SourceIcon type={isAudio ? 'audio' : 'pdf'} />
+                                  <span>{citation.label}</span>
+                                  <small>{citation.page}</small>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                {/* Streaming Assistant Response */}
+                {isStreaming && (
+                  <div className="message ai">
+                    <div className="ai-badge">
+                      <Icon name="spark" size={14} />
+                    </div>
+                    <div className="message-body">
+                      <div className="message-meta">
+                        LUMEN / SYNTHESIS <span>STREAMING</span>
+                      </div>
+                      <p>
+                        {streamedText}
+                        <span className="streaming-cursor" />
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Executive Summary Drawer */}
+              {summaryData && (
+                <div className="summary-drawer">
+                  <div className="section-index">EXECUTIVE BRIEF</div>
+                  <h4>Synthesized Overview</h4>
+                  <p>{summaryData.executive_summary}</p>
+                  {summaryData.key_points && (
+                    <ul>
+                      {summaryData.key_points.map((kp, kpi) => (
+                        <li key={kpi}>{kp}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Right Column: Source Constellation, Orbits & Moments */}
+            <aside className="inspector">
+              {/* 03 / EVIDENCE Section */}
+              <div className="inspector-head">
+                <div>
+                  <div className="section-index">03 / EVIDENCE</div>
+                  <h2>Source constellation</h2>
+                </div>
+                <button
+                  className="add-circle"
+                  aria-label="Add source"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Icon name="plus" size={17} />
+                </button>
+              </div>
+
+              {/* Orbital Signal Radar */}
+              <div className="signal-map">
+                <div className="orbit orbit-one" />
+                <div className="orbit orbit-two" />
+                <span className="map-core">
+                  <Icon name="spark" size={15} />
+                </span>
+                <span className="map-node node-one" />
+                <span className="map-node node-two" />
+                <span className="map-node node-three" />
+                <div className="map-caption">
+                  <strong>{sources.length}</strong>
+                  <span>linked sources</span>
+                </div>
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="filter-tabs">
+                {['All', 'PDF', 'Audio', 'Video'].map((tab) => (
+                  <button
+                    className={filter === tab ? 'active' : ''}
+                    key={tab}
+                    onClick={() => setFilter(tab)}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              {/* Source List */}
+              <div className="source-list">
+                {visibleSources.map((source) => (
+                  <button
+                    className={`source-card ${source.active ? 'selected' : ''}`}
+                    key={source.id}
+                    onClick={() => selectSource(source.id)}
+                  >
+                    <SourceIcon type={source.type} />
+                    <span className="source-details">
+                      <strong>{source.name}</strong>
+                      <small>{source.meta}</small>
+                    </span>
+                    <span className="source-more">•••</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Drag & Drop Zone */}
+              <div
+                className={`drop-zone ${dragOver ? 'active' : ''}`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Icon name="plus" size={17} />
-              </button>
-            </div>
-
-            {/* Orbital Signal Radar */}
-            <div className="signal-map">
-              <div className="orbit orbit-one" />
-              <div className="orbit orbit-two" />
-              <span className="map-core">
-                <Icon name="spark" size={15} />
-              </span>
-              <span className="map-node node-one" />
-              <span className="map-node node-two" />
-              <span className="map-node node-three" />
-              <div className="map-caption">
-                <strong>{sources.length}</strong>
-                <span>linked sources</span>
+                <Icon name="upload" size={20} />
+                <strong>Drop another source</strong>
+                <span>PDF / audio / video up to 100 MB</span>
               </div>
-            </div>
 
-            {/* Filter Tabs */}
-            <div className="filter-tabs">
-              {['All', 'PDF', 'Audio', 'Video'].map((tab) => (
-                <button
-                  className={filter === tab ? 'active' : ''}
-                  key={tab}
-                  onClick={() => setFilter(tab)}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+              <div className="inspector-divider" />
 
-            {/* Source List */}
-            <div className="source-list">
-              {visibleSources.map((source) => (
-                <button
-                  className={`source-card ${source.active ? 'selected' : ''}`}
-                  key={source.id}
-                  onClick={() => selectSource(source.id)}
-                >
-                  <SourceIcon type={source.type} />
-                  <span className="source-details">
-                    <strong>{source.name}</strong>
-                    <small>{source.meta}</small>
-                  </span>
-                  <span className="source-more">•••</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Drag & Drop Zone */}
-            <div
-              className={`drop-zone ${dragOver ? 'active' : ''}`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Icon name="upload" size={20} />
-              <strong>Drop another source</strong>
-              <span>PDF / audio / video up to 100 MB</span>
-            </div>
-
-            <div className="inspector-divider" />
-
-            {/* 04 / MOMENT Section & Synchronized Media Player */}
-            <div className="recent-heading">
-              <div>
-                <div className="section-index">04 / MOMENT</div>
-                <h3>Recent evidence</h3>
-              </div>
-              <button onClick={() => togglePlay()}>
-                {playing ? 'Pause' : 'Play all'}
-              </button>
-            </div>
-
-            {/* Moment Card */}
-            <button
-              className="moment-card"
-              onClick={() => togglePlay()}
-            >
-              <div className="moment-thumbnail">
-                <span className="waveform">▁▂▅▃▆▇▅▃▂▅▇</span>
-                <span className="play-pill">{playing ? 'Ⅱ' : '▶'}</span>
-              </div>
-              <span>
-                <strong>
-                  {activeSource?.name ? `“${activeSource.name}”` : '“The async advantage”'}
-                </strong>
-                <small>
-                  {activeSource?.type?.toUpperCase() || 'MEDIA'} / {formatSeconds(currentTime)}
-                </small>
-              </span>
-              <span className="moment-arrow">↗</span>
-            </button>
-
-            {/* Integrated Media Player Controls */}
-            {activeSource && activeSource.type !== 'pdf' && (
-              <div className="player-drawer">
-                {activeSource.type === 'video' && activeMediaUrl ? (
-                  <video
-                    ref={mediaRef}
-                    src={activeMediaUrl}
-                    onTimeUpdate={handleMediaTimeUpdate}
-                    onLoadedMetadata={handleMediaLoaded}
-                    onEnded={handleMediaEnded}
-                    playsInline
-                  />
-                ) : activeMediaUrl ? (
-                  <audio
-                    ref={mediaRef}
-                    src={activeMediaUrl}
-                    onTimeUpdate={handleMediaTimeUpdate}
-                    onLoadedMetadata={handleMediaLoaded}
-                    onEnded={handleMediaEnded}
-                  />
-                ) : null}
-
-                {/* Timeline Scrub Bar */}
-                <div className="player-controls-row">
-                  <span className="time-readout">{formatSeconds(currentTime)}</span>
-                  <input
-                    type="range"
-                    className="scrub-bar"
-                    min="0"
-                    max={duration || activeSource.duration_seconds || 100}
-                    step="0.1"
-                    value={currentTime}
-                    onChange={handleSeek}
-                  />
-                  <span className="time-readout">
-                    {formatSeconds(duration || activeSource.duration_seconds || 0)}
-                  </span>
+              {/* 04 / MOMENT Section & Synchronized Media Player */}
+              <div className="recent-heading">
+                <div>
+                  <div className="section-index">04 / MOMENT</div>
+                  <h3>Recent evidence</h3>
                 </div>
+                <button onClick={() => togglePlay()}>
+                  {playing ? 'Pause' : 'Play all'}
+                </button>
+              </div>
 
-                {/* Speed Controls & Rewind */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                      className="btn-pill"
-                      onClick={() => {
-                        if (mediaRef.current) mediaRef.current.currentTime = Math.max(0, currentTime - 5);
-                      }}
-                    >
-                      -5s
-                    </button>
-                    <button
-                      className="btn-pill"
-                      onClick={() => {
-                        if (mediaRef.current) mediaRef.current.currentTime = Math.min(duration, currentTime + 5);
-                      }}
-                    >
-                      +5s
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {[1, 1.25, 1.5, 2].map((sp) => (
-                      <button
-                        key={sp}
-                        className="btn-pill"
-                        style={{
-                          background: playbackSpeed === sp ? 'var(--mint)' : '#243534',
-                          color: playbackSpeed === sp ? '#111719' : 'var(--mint)',
-                        }}
-                        onClick={() => handleSpeedChange(sp)}
-                      >
-                        {sp}x
-                      </button>
-                    ))}
-                  </div>
+              {/* Moment Card */}
+              <button className="moment-card" onClick={() => togglePlay()}>
+                <div className="moment-thumbnail">
+                  <span className="waveform">▁▂▅▃▆▇▅▃▂▅▇</span>
+                  <span className="play-pill">{playing ? 'Ⅱ' : '▶'}</span>
                 </div>
+                <span>
+                  <strong>
+                    {activeSource?.name ? `“${activeSource.name}”` : '“The async advantage”'}
+                  </strong>
+                  <small>
+                    {activeSource?.type?.toUpperCase() || 'MEDIA'} / {formatSeconds(currentTime)}
+                  </small>
+                </span>
+                <span className="moment-arrow">↗</span>
+              </button>
 
-                {/* Extracted Topic Chapters */}
-                {topics && topics.length > 0 && (
-                  <div style={{ marginTop: '8px', borderTop: '1px solid var(--line)', paddingTop: '8px' }}>
-                    <span style={{ fontSize: '9px', color: 'var(--dim)', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                      Key Chapters
+              {/* Integrated Media Player Controls */}
+              {activeSource && activeSource.type !== 'pdf' && (
+                <div className="player-drawer">
+                  {activeSource.type === 'video' && activeMediaUrl ? (
+                    <video
+                      ref={mediaRef}
+                      src={activeMediaUrl}
+                      onTimeUpdate={handleMediaTimeUpdate}
+                      onLoadedMetadata={handleMediaLoaded}
+                      onEnded={handleMediaEnded}
+                      playsInline
+                    />
+                  ) : activeMediaUrl ? (
+                    <audio
+                      ref={mediaRef}
+                      src={activeMediaUrl}
+                      onTimeUpdate={handleMediaTimeUpdate}
+                      onLoadedMetadata={handleMediaLoaded}
+                      onEnded={handleMediaEnded}
+                    />
+                  ) : null}
+
+                  {/* Timeline Scrub Bar */}
+                  <div className="player-controls-row">
+                    <span className="time-readout">{formatSeconds(currentTime)}</span>
+                    <input
+                      type="range"
+                      className="scrub-bar"
+                      min="0"
+                      max={duration || activeSource.duration_seconds || 100}
+                      step="0.1"
+                      value={currentTime}
+                      onChange={handleSeek}
+                    />
+                    <span className="time-readout">
+                      {formatSeconds(duration || activeSource.duration_seconds || 0)}
                     </span>
-                    <div style={{ display: 'grid', gap: '4px', marginTop: '6px' }}>
-                      {topics.slice(0, 4).map((top) => (
+                  </div>
+
+                  {/* Speed Controls & Rewind */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        className="btn-pill"
+                        onClick={() => {
+                          if (mediaRef.current) mediaRef.current.currentTime = Math.max(0, currentTime - 5);
+                        }}
+                      >
+                        -5s
+                      </button>
+                      <button
+                        className="btn-pill"
+                        onClick={() => {
+                          if (mediaRef.current) mediaRef.current.currentTime = Math.min(duration, currentTime + 5);
+                        }}
+                      >
+                        +5s
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {[1, 1.25, 1.5, 2].map((sp) => (
                         <button
-                          key={top.id}
-                          className="citation-pill"
-                          style={{ width: '100%', justifyContent: 'space-between' }}
-                          onClick={() => jumpToTimestamp(top.start_time, top.title)}
+                          key={sp}
+                          className="btn-pill"
+                          style={{
+                            background: playbackSpeed === sp ? 'var(--mint)' : '#243534',
+                            color: playbackSpeed === sp ? '#111719' : 'var(--mint)',
+                          }}
+                          onClick={() => handleSpeedChange(sp)}
                         >
-                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {top.title}
-                          </span>
-                          <small>{top.formatted_start}</small>
+                          {sp}x
                         </button>
                       ))}
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-          </aside>
-        </div>
+
+                  {/* Extracted Topic Chapters */}
+                  {topics && topics.length > 0 && (
+                    <div style={{ marginTop: '8px', borderTop: '1px solid var(--line)', paddingTop: '8px' }}>
+                      <span
+                        style={{
+                          fontSize: '9px',
+                          color: 'var(--dim)',
+                          letterSpacing: '1px',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Key Chapters
+                      </span>
+                      <div style={{ display: 'grid', gap: '4px', marginTop: '6px' }}>
+                        {topics.slice(0, 4).map((top) => (
+                          <button
+                            key={top.id}
+                            className="citation-pill"
+                            style={{ width: '100%', justifyContent: 'space-between' }}
+                            onClick={() => jumpToTimestamp(top.start_time, top.title)}
+                          >
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {top.title}
+                            </span>
+                            <small>{top.formatted_start}</small>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </aside>
+          </div>
+        )}
 
         {/* Footer */}
         <footer className="privacy-note">
           <span className="lock">◌</span> Your room is private by design.{' '}
-          <a href="#grounding" onClick={(e) => { e.preventDefault(); alert('Grounding uses cosine vector search and Whisper timestamps to link every claim directly to media segments.'); }}>
+          <a
+            href="#grounding"
+            onClick={(e) => {
+              e.preventDefault();
+              alert(
+                'Grounding uses cosine vector search and Whisper timestamps to link every claim directly to media segments.'
+              );
+            }}
+          >
             How grounding works
           </a>
           <span className="footer-status">
@@ -882,6 +1063,119 @@ export function App() {
           </span>
         </footer>
       </section>
+
+      {/* ─── ASSET DETAIL / INSPECT & PLAY MODAL ─── */}
+      {previewAsset && (
+        <div className="library-preview-modal" onClick={() => setPreviewAsset(null)}>
+          <div className="library-preview-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <SourceIcon type={previewAsset.type} />
+                <div>
+                  <h2 style={{ font: '400 20px Georgia, serif', margin: 0, color: 'var(--ink)' }}>
+                    {previewAsset.name}
+                  </h2>
+                  <p style={{ color: 'var(--dim)', fontSize: '11px', margin: '4px 0 0' }}>
+                    {previewAsset.meta}
+                  </p>
+                </div>
+              </div>
+              <button
+                style={{ background: 'none', border: 'none', color: 'var(--dim)', fontSize: '20px' }}
+                onClick={() => setPreviewAsset(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Media playback if audio/video */}
+            {previewAsset.type !== 'pdf' && !String(previewAsset.id).startsWith('demo-') && (
+              <div className="player-drawer" style={{ margin: 0 }}>
+                {previewAsset.type === 'video' ? (
+                  <video
+                    ref={previewMediaRef}
+                    src={api.getMediaStreamUrl(previewAsset.id)}
+                    controls
+                    playsInline
+                    style={{ width: '100%', maxHeight: '280px' }}
+                  />
+                ) : (
+                  <audio
+                    ref={previewMediaRef}
+                    src={api.getMediaStreamUrl(previewAsset.id)}
+                    controls
+                    style={{ width: '100%' }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Executive Summary */}
+            {previewAsset.summary && (
+              <div className="summary-drawer" style={{ margin: 0 }}>
+                <div className="section-index">EXECUTIVE SUMMARY</div>
+                <p>{previewAsset.summary}</p>
+              </div>
+            )}
+
+            {/* Topic Chapters */}
+            {previewAsset.topics && previewAsset.topics.length > 0 && (
+              <div>
+                <div className="section-index" style={{ marginBottom: '8px' }}>
+                  DETECTED CHAPTERS & TOPICS ({previewAsset.topics.length})
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '8px' }}>
+                  {previewAsset.topics.map((t) => (
+                    <div key={t.id} className="citation-pill" style={{ justifyContent: 'space-between', padding: '8px 12px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 500 }}>{t.title}</span>
+                      <small>{t.formatted_start} - {t.formatted_end}</small>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Transcript / Text Snippet */}
+            {previewAsset.full_text && (
+              <div>
+                <div className="section-index" style={{ marginBottom: '8px' }}>
+                  EXTRACTED TRANSCRIPT / PASSAGES
+                </div>
+                <div
+                  style={{
+                    background: '#0d1315',
+                    border: '1px solid var(--line)',
+                    padding: '14px',
+                    borderRadius: '8px',
+                    maxHeight: '160px',
+                    overflowY: 'auto',
+                    fontSize: '11px',
+                    color: '#a4b1ae',
+                    lineHeight: 1.6,
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {previewAsset.full_text}
+                </div>
+              </div>
+            )}
+
+            {/* Action Bar */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+              <button
+                className="btn-pill"
+                onClick={() => {
+                  selectSource(previewAsset.id);
+                  setPreviewAsset(null);
+                  setActiveView('signal');
+                }}
+              >
+                Start Grounded Q&A in Signal Room ↗
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── API KEY & PREFERENCES MODAL ─── */}
       {showKeyModal && (
