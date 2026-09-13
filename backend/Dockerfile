@@ -1,28 +1,17 @@
-# Multi-stage production Dockerfile for PSI FastAPI backend
-FROM python:3.10-slim AS builder
-
-WORKDIR /app
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
-# Final runtime container
 FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install runtime audio/video dependencies (ffmpeg for media extraction)
+# Install runtime dependencies (ffmpeg for audio extraction, curl for healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
-COPY --from=builder /install /usr/local
+# Install pre-built Python binary wheels directly (avoids duplicate builder layer snapshots)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY . /app
 
 # Create unprivileged user for security best practices
