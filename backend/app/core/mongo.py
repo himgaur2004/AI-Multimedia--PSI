@@ -79,6 +79,11 @@ class MongoManager:
             return True
         except (ConnectionFailure, PyMongoError, Exception) as exc:
             logger.warning(f"MongoDB connection failed ({exc}); continuing with fallback storage.")
+            if self._client:
+                try:
+                    self._client.close()
+                except Exception:
+                    pass
             self._connected = False
             self._client = None
             self._db = None

@@ -89,3 +89,18 @@ def test_mongo_manager_connection_failure(monkeypatch):
         connected = mgr.connect()
         assert connected is False
         assert not mgr.is_connected
+
+
+def test_mongo_manager_auth_failure_closes_client(monkeypatch):
+    """Verify connect closes client when ping fails due to bad credentials."""
+    monkeypatch.setattr(settings, "MONGODB_URL", "mongodb://user:badpass@localhost:27017/psi")
+    mock_client = MagicMock()
+    mock_client.admin.command.side_effect = Exception("bad auth: authentication failed")
+    
+    with patch("app.core.mongo.MongoClient", return_value=mock_client):
+        mgr = MongoManager()
+        connected = mgr.connect()
+        assert connected is False
+        assert not mgr.is_connected
+        mock_client.close.assert_called_once()
+

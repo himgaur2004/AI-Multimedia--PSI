@@ -324,6 +324,10 @@ def test_cors_origins_parsing():
     s4 = Settings(CORS_ORIGINS='["https://ai-multimedia-psi.vercel.app"]')
     assert s4.cors_origins == ["https://ai-multimedia-psi.vercel.app"]
 
+    # 5. Broken JSON brackets string
+    s5 = Settings(CORS_ORIGINS='[broken json]')
+    assert s5.cors_origins == ['[broken json]']
+
 
 def test_database_manager_mongo_url_handling():
     """Test DatabaseManager safely handles mongodb URLs without sqlite failure."""
