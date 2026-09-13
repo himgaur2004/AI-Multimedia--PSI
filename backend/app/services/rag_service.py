@@ -196,8 +196,10 @@ class RAGService:
                 })
                 return answer, citations, follow_ups
             except Exception as e:
-                print(f"[RAGService] OpenAI Chat error: {e}. Falling back to Inbuilt FAISS RAG engine.")
-                self.last_engine = "GPT LLM (Fallback: Inbuilt RAG)"
+                err_str = str(e).lower()
+                reason = "Quota Exceeded" if "quota" in err_str else ("Invalid API Key" if any(k in err_str for k in ("auth", "invalid", "401")) else "Unavailable")
+                print(f"[RAGService] OpenAI Chat error: {e}. Falling back to Inbuilt FAISS RAG engine ({reason}).")
+                self.last_engine = f"GPT LLM (Fallback: Inbuilt RAG) - {reason}"
         else:
             self.last_engine = "Inbuilt RAG / FAISS Search"
 
@@ -286,8 +288,11 @@ class RAGService:
             return
 
         # Mode 2: GPT LLM Mode
+        fallback_reason = ""
         client = self._get_client(active_key)
-        if client is not None:
+        if client is None:
+            fallback_reason = "No API Key Provided"
+        else:
             try:
                 prompt = self.generate_prompt(query, context, file_type, chat_history)
                 stream = client.chat.completions.create(
@@ -321,10 +326,15 @@ class RAGService:
                 yield f"data: {json.dumps({'done': True, 'citations': [c.model_dump() for c in citations], 'follow_up_questions': follow_ups, 'engine': self.last_engine, 'retrieval_method': self.last_retrieval_method})}\n\n"
                 return
             except Exception as e:
-                print(f"[RAGService] Stream fallback triggered: {e}")
+                err_str = str(e).lower()
+                fallback_reason = "Quota Exceeded" if "quota" in err_str else ("Invalid API Key" if any(k in err_str for k in ("auth", "invalid", "401")) else "Unavailable")
+                print(f"[RAGService] Stream fallback triggered: {e} ({fallback_reason})")
 
         # Stream fallback tokens word-by-word with real-time SSE micro-delay
-        self.last_engine = "GPT LLM (Fallback: Inbuilt RAG)" if search_mode == "gpt" else "Inbuilt RAG / FAISS Search"
+        if search_mode == "gpt":
+            self.last_engine = f"GPT LLM (Fallback: Inbuilt RAG) - {fallback_reason}" if fallback_reason else "GPT LLM (Fallback: Inbuilt RAG)"
+        else:
+            self.last_engine = "Inbuilt RAG / FAISS Search"
         self.last_retrieval_method = "FAISS Semantic Vector Search"
         answer = self._generate_deterministic_answer(query, citations, file_type)
         words = answer.split(" ")
