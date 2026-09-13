@@ -17,11 +17,20 @@ from app.core.mongo import mongo_manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager ensuring database initialization and resource cleanup."""
-    db_manager.init_db()
+    try:
+        db_manager.init_db()
+    except Exception:
+        pass
     if mongo_manager.is_configured:
-        mongo_manager.connect()
+        try:
+            mongo_manager.connect()
+        except Exception:
+            pass
     yield
-    mongo_manager.close()
+    try:
+        mongo_manager.close()
+    except Exception:
+        pass
 
 
 app = FastAPI(

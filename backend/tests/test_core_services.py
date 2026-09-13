@@ -301,3 +301,56 @@ def test_database_manager_session():
             conn.execute("CREATE TABLE IF NOT EXISTS _test_roll (x INT)")
             conn.execute("INSERT INTO _test_roll VALUES (1)")
             raise ValueError("Forced test rollback")
+
+
+def test_cors_origins_parsing():
+    """Test Settings.parse_cors_origins with various string and list formats."""
+    from app.core.config import Settings
+    
+    # 1. Asterisk
+    s1 = Settings(CORS_ORIGINS="*")
+    assert s1.CORS_ORIGINS == ["*"]
+
+    # 2. Empty string
+    s2 = Settings(CORS_ORIGINS="")
+    assert s2.CORS_ORIGINS == ["*"]
+
+    # 3. Comma-separated string
+    s3 = Settings(CORS_ORIGINS="https://ai-multimedia-psi.vercel.app, http://localhost:3000")
+    assert "https://ai-multimedia-psi.vercel.app" in s3.CORS_ORIGINS
+    assert "http://localhost:3000" in s3.CORS_ORIGINS
+
+    # 4. JSON list string
+    s4 = Settings(CORS_ORIGINS='["https://ai-multimedia-psi.vercel.app"]')
+    assert s4.CORS_ORIGINS == ["https://ai-multimedia-psi.vercel.app"]
+
+    # 5. Native list
+    s5 = Settings(CORS_ORIGINS=["https://example.com"])
+    assert s5.CORS_ORIGINS == ["https://example.com"]
+
+    # 6. Fallback non-string/non-list
+    s6 = Settings(CORS_ORIGINS=123)
+    assert s6.CORS_ORIGINS == ["*"]
+
+
+def test_database_manager_mongo_url_handling():
+    """Test DatabaseManager safely handles mongodb URLs without sqlite failure."""
+    from app.core.database import DatabaseManager
+    dm = DatabaseManager("mongodb+srv://user:pass@cluster0.ieebzgz.mongodb.net/test")
+    assert dm.db_path == "psi.db"
+
+
+@pytest.mark.asyncio
+async def test_main_app_lifespan():
+    """Test main FastAPI lifespan execution and graceful error resilience."""
+    from app.main import lifespan, app
+    from unittest.mock import patch, PropertyMock
+    from app.core.mongo import MongoManager
+
+    with patch("app.core.database.db_manager.init_db", side_effect=Exception("DB init err")), \
+         patch.object(MongoManager, "is_configured", new_callable=PropertyMock, return_value=True), \
+         patch("app.core.mongo.mongo_manager.connect", side_effect=Exception("Mongo err")), \
+         patch("app.core.mongo.mongo_manager.close", side_effect=Exception("Close err")):
+        async with lifespan(app):
+            pass
+

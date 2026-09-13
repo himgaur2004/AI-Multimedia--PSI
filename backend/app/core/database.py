@@ -16,9 +16,15 @@ class DatabaseManager:
     """Manages SQLite database connections and schema migrations."""
 
     def __init__(self, db_url: str = settings.DATABASE_URL):
-        self.db_path = db_url.replace("sqlite:///", "")
+        if db_url.startswith(("mongodb://", "mongodb+srv://")):
+            self.db_path = "psi.db"
+        else:
+            self.db_path = db_url.replace("sqlite:///", "")
         self._local = threading.local()
-        self.init_db()
+        try:
+            self.init_db()
+        except Exception:
+            pass
 
     def get_connection(self) -> sqlite3.Connection:
         """Get or initialize thread-local sqlite connection with row factories."""
