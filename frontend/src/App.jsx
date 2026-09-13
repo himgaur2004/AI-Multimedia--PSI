@@ -268,7 +268,10 @@ export default function App() {
         onClose={() => setShowSettingsModal(false)}
         gptModel={gptModel}
         setGptModel={setGptModel}
-        onSettingsSaved={initUser}
+        onSettingsSaved={() => {
+          setBackendError(null);
+          if (user) refreshSources();
+        }}
       />
 
       <AuthModal
