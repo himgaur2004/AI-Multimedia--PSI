@@ -35,7 +35,7 @@ jobs:
         working-directory: ./backend
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-test.txt
 
       - name: Run Pytest with 95%+ coverage enforcement
         working-directory: ./backend
