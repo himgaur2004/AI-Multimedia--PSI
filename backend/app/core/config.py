@@ -31,8 +31,10 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     
-    # Database
+    # Database (MongoDB / SQLite)
     DATABASE_URL: str = "sqlite:///./psi.db"
+    MONGODB_URL: str = ""
+    MONGODB_DB_NAME: str = "psi_db"
     
     # Redis & Caching
     REDIS_URL: str = "redis://127.0.0.1:6379/0"

@@ -17,18 +17,33 @@ services:
       - SECRET_KEY=${SECRET_KEY:-psi_change_before_deploying_2026}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./psi.db}
+      - MONGODB_URL=${MONGODB_URL:-mongodb://mongodb:27017/psi_db}
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-100}
       - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
       - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173"]}
     volumes:
       - psi_uploads:/app/uploads
       - psi_db:/app
+    depends_on:
+      mongodb:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - psi-net
+
+  mongodb:
+    image: mongo:7-jammy
+    container_name: psi-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - psi_mongo_data:/data/db
     networks:
       - psi-net
 
@@ -51,6 +66,7 @@ services:
 volumes:
   psi_uploads:
   psi_db:
+  psi_mongo_data:
 
 networks:
   psi-net:

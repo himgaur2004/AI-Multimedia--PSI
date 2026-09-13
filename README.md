@@ -52,8 +52,8 @@ Repository: **[https://github.com/himgaur2004/AI-Multimedia--PSI.git](https://gi
                          ┌───────────────┴───────────────┐
                          ▼                               ▼
               ┌─────────────────────┐         ┌────────────────────┐
-              │ SQLite / PostgreSQL │         │    Redis Cache     │
-              │ Persistent Database │         │ Rate Limit & RAG   │
+              │ MongoDB / SQLite    │         │    Redis Cache     │
+              │ Document & Metadata │         │ Rate Limit & RAG   │
               └─────────────────────┘         └────────────────────┘
 ```
 
@@ -68,7 +68,8 @@ PSI is containerized with multi-stage Dockerfiles and orchestrated using Docker 
 | Service | Container Name | Base Image | Internal Port | Exposed Port | Purpose |
 |---|---|---|---|---|---|
 | **frontend** | `psi-frontend` | `node:20-alpine` → `nginx:alpine` | `80` | `3000` | High-performance Nginx web server, static asset cache, client-side SPA router, and reverse proxy for `/api/` |
-| **backend** | `psi-backend` | `python:3.10-slim` | `8000` | `8000` | FastAPI ASGI backend with FFmpeg runtime, FAISS vector search, Whisper transcription, and SQLite volume |
+| **backend** | `psi-backend` | `python:3.10-slim` | `8000` | `8000` | FastAPI ASGI backend with FFmpeg runtime, FAISS vector search, Whisper transcription, and MongoDB connector |
+| **mongodb** | `psi-mongodb` | `mongo:7-jammy` | `27017` | `27017` | Persistent NoSQL database for multi-user accounts, uploaded document metadata, transcripts, and chat history |
 
 ### Quick Start with Docker (Recommended)
 
@@ -109,12 +110,13 @@ docker compose logs -f
 | **Real-time Chat Streaming** | Server-Sent Events (SSE) streaming tokens word-by-word with typing cursor and source citations | ✅ Complete |
 | **Multi-User Auth** | PBKDF2-HMAC-SHA256 password hashing, JWT Bearer tokens, instant guest mode (`/auth/guest`) | ✅ Complete |
 | **Rate Limiting & Caching** | Distributed Redis caching with automatic in-memory fallback and sliding-window rate limiting | ✅ Complete |
+| **Database (MongoDB / SQLite)**| Full MongoDB NoSQL support with PyMongo driver, indexing, and automatic local fallback | ✅ Complete |
 | **PDF & Multimedia Upload** | Supports `.pdf`, `.mp3`, `.wav`, `.m4a`, `.mp4`, `.webm`, `.mov` with format validation & size guards | ✅ Complete |
 | **Speech Transcription (ASR)** | Whisper transcription engine with timestamp alignment (`start`, `end`, `text`) | ✅ Complete |
 | **Interactive Video Seeking** | Clickable `[MM:SS]` timestamp badges that jump media player directly to cited audio/video seconds | ✅ Complete |
 | **HTTP Byte-Range Streaming** | RFC 7233 Partial Content (HTTP 206) media streaming for instantaneous audio/video playback | ✅ Complete |
 | **Executive Summarization** | Structured summaries, bullet points, key takeaways, and word counters | ✅ Complete |
-| **Automated Testing (95%+)** | 78 automated Pytest unit/integration tests with **95.43% test coverage** enforced via `pytest.ini` | ✅ Complete |
+| **Automated Testing (95%+)** | 83 automated Pytest unit/integration tests with **95.26% test coverage** enforced via `pytest.ini` | ✅ Complete |
 | **Production Dockerization** | Multi-stage Dockerfiles, Docker Compose, Nginx reverse proxy, and non-root security containers | ✅ Complete |
 | **CI/CD Pipeline** | GitHub Actions workflow executing backend tests, frontend builds, and Docker validation on push | ✅ Complete |
 
@@ -122,16 +124,17 @@ docker compose logs -f
 
 ## ☁️ Cloud Deployment (Railway + Vercel)
 
-### 1. Database on Railway
+### 1. Database on Railway (MongoDB)
 1. Open [Railway.app](https://railway.app/) and create a project.
-2. Click **+ New** → **Database** → **Add PostgreSQL** (or **Add Redis**).
-3. Copy the provided connection string `${{Postgres.DATABASE_URL}}`.
+2. Click **+ New** → **Database** → **Add MongoDB** (or use [MongoDB Atlas](https://www.mongodb.com/atlas)).
+3. Railway generates a connection string available as `${{MongoDB.MONGO_URL}}` (e.g. `mongodb://mongo:password@host:port`).
+4. *(Optional)* Click **+ New** → **Database** → **Add Redis** for caching and rate-limiting.
 
 ### 2. Backend on Railway
 1. Click **+ New** → **GitHub Repo** → select `himgaur2004/AI-Multimedia--PSI`.
 2. Set the **Root Directory** to `/backend`. Railway automatically detects `backend/railway.json` and builds the Dockerfile.
 3. Configure environment variables under **Variables**:
-   - `DATABASE_URL`: `${{Postgres.DATABASE_URL}}`
+   - `MONGODB_URL`: `${{MongoDB.MONGO_URL}}` (or your MongoDB Atlas connection string)
    - `SECRET_KEY`: `<your-secure-secret-key>`
    - `OPENAI_API_KEY`: `sk-...` *(optional, for GPT-4 LLM answers)*
    - `CORS_ORIGINS`: `["https://<your-app>.vercel.app","http://localhost:3000"]`

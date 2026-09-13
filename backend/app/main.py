@@ -11,13 +11,17 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import db_manager
+from app.core.mongo import mongo_manager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager ensuring database initialization and resource cleanup."""
     db_manager.init_db()
+    if mongo_manager.is_configured:
+        mongo_manager.connect()
     yield
+    mongo_manager.close()
 
 
 app = FastAPI(
@@ -62,11 +66,14 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.get("/health", tags=["System Health"])
 def health_check():
     """Health check endpoint for Docker container orchestration and uptime monitoring."""
-    return {
+    resp = {
         "status": "healthy",
         "app": settings.PROJECT_NAME,
         "version": settings.VERSION,
     }
+    if mongo_manager.is_configured:
+        resp["mongodb"] = "connected" if mongo_manager.is_connected else "disconnected"
+    return resp
 
 
 @app.exception_handler(Exception)
