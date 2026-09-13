@@ -321,6 +321,18 @@ def test_local_transcription_branches(tmp_path):
         assert dur == 35.0
         assert len(segs) >= 2
 
+    # Speech recognition language fallback (en-IN fails, en-US succeeds)
+    mock_recognizer_us = MagicMock()
+    mock_recognizer_us.recognize_google.side_effect = [Exception("en-IN failed"), "English US speech recognized"]
+    mock_sr.Recognizer.return_value = mock_recognizer_us
+    with patch("app.services.transcription_service.get_media_duration", return_value=8.0), \
+         patch("subprocess.run", return_value=MagicMock(returncode=0)), \
+         patch("os.path.exists", return_value=True), \
+         patch("os.path.getsize", return_value=1000), \
+         patch("app.services.transcription_service.sr", mock_sr):
+        full_text_us, segs_us, dur_us = transcription_service._generate_deterministic_transcript(str(dummy_file))
+        assert "English US speech" in full_text_us
+
 
 def test_summary_service_custom_speech_and_edge_cases():
     """Test custom dialogue summary and topic formatting edge cases."""

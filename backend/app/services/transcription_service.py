@@ -149,9 +149,12 @@ class TranscriptionService:
                             audio_data = recognizer.record(source, duration=dur)
                             seg_text = ""
                             try:
-                                seg_text = recognizer.recognize_google(audio_data)
+                                seg_text = recognizer.recognize_google(audio_data, language="en-IN")
                             except Exception:
-                                seg_text = ""
+                                try:
+                                    seg_text = recognizer.recognize_google(audio_data, language="en-US")
+                                except Exception:
+                                    seg_text = ""
                             
                             s_start = round(current_offset, 2)
                             s_end = round(min(actual_duration, current_offset + dur), 2)

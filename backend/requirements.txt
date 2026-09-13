@@ -24,6 +24,7 @@ redis>=5.0.0
 scikit-learn>=1.4.0
 numpy>=1.26.0
 openai>=1.10.0
+SpeechRecognition>=3.10.0
 
 # Testing (excluded from Docker via .dockerignore)
 pytest>=8.1.0

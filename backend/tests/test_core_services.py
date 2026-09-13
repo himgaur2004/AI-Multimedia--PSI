@@ -227,6 +227,14 @@ def test_rag_service_fallback():
     title_3 = summary_service._extract_clean_topic_title("Moving on to evaluating experimental results and metrics", 2)
     assert len(title_3) > 0
 
+    # Test transcript & synopsis query directly
+    transcript_ans = rag_service._generate_deterministic_answer("transcription of whole video", sample_media_cites, "video")
+    assert "transcript & synopsis" in transcript_ans
+    assert "[01:25]" in transcript_ans
+
+    pdf_transcript = rag_service._generate_deterministic_answer("give synopsis of speech", sample_cites, "pdf")
+    assert "transcript & synopsis" in pdf_transcript
+
 
 def test_summary_and_transcription_fallbacks():
     text = "Paragraph one with detailed system information.\nParagraph two explaining vector indexing."

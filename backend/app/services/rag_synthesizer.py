@@ -236,6 +236,27 @@ def generate_deterministic_answer(
     scored_candidates.sort(key=lambda x: x[0], reverse=True)
     top_relevant = [item for item in scored_candidates if item[0] > 0]
 
+    is_transcript_request = any(k in q_lower for k in [
+        "transcript", "transcipt", "transcription", "transciption",
+        "synopsis", "voice meaning", "what does the voice say", "what is said",
+        "whole video", "whole recording", "full video", "full audio",
+        "spoken words", "speech", "dialogue", "script", "all topics"
+    ])
+    if is_transcript_request:
+        source_label = "recording" if file_type in {"audio", "video"} else "document"
+        lines = [f"Here is the complete timestamped transcript & synopsis for the {source_label}:"]
+        seen_texts = set()
+        for c in citations:
+            ts = c.formatted_timestamp or (f"Page {c.page}" if c.page else "00:00")
+            txt = (c.snippet or "").strip()
+            clean_txt = re.sub(r"^[●•\-\s]+", "", txt).strip()
+            if clean_txt and clean_txt not in seen_texts:
+                seen_texts.add(clean_txt)
+                lines.append(f"• [{ts}] {clean_txt}")
+        if file_type in {"audio", "video"}:
+            lines.append("\nYou can click any timestamp badge above to jump the player directly to that segment.")
+        return "\n".join(lines)
+
     is_summary = any(k in q_lower for k in ["summar", "overview", "outline", "main point", "key point", "about the", "what is this", "presentation", "talk"])
     if not top_relevant and not is_summary:
         source_label = "recording" if file_type in {"audio", "video"} else "document"
