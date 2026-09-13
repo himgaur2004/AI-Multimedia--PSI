@@ -257,7 +257,7 @@ def generate_deterministic_answer(
             lines.append("\nYou can click any timestamp badge above to jump the player directly to that segment.")
         return "\n".join(lines)
 
-    is_summary = any(k in q_lower for k in ["summar", "overview", "outline", "main point", "key point", "about the", "what is this", "presentation", "talk"])
+    is_summary = any(k in q_lower for k in ["summar", "overview", "outline", "main point", "key point", "about the", "what is this", "presentation", "talk", "project", "topic", "detail", "tell me"])
     if not top_relevant and not is_summary:
         source_label = "recording" if file_type in {"audio", "video"} else "document"
         return (

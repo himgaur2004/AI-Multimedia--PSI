@@ -212,8 +212,15 @@ class VectorService:
             vec_sim = float(faiss_scores[idx]) if has_faiss else (float(cos_scores[idx]) if idx < len(cos_scores) else 0.0)
             chunk_lower = chunk["text"].lower()
 
-            # Keyword term matches
-            matches = sum(1 for term in query_terms if term in chunk_lower)
+            # Keyword term matches with morphological stem awareness
+            matches = 0.0
+            for term in query_terms:
+                if term in chunk_lower:
+                    matches += 1.0
+                else:
+                    stem = re.sub(r"(ing|tion|ed|es|s)$", "", term)
+                    if len(stem) >= 3 and stem in chunk_lower:
+                        matches += 0.8
             keyword_ratio = (matches / max(1, len(query_terms))) if query_terms else 0.0
 
             # Phrase match boost

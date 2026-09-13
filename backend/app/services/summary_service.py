@@ -213,19 +213,29 @@ TRANSCRIPT:
                     "Audio transcribed and indexed for semantic search."
                 ]
         else:
-            lines = [line.strip() for line in full_text.splitlines() if len(line.strip()) > 20]
-            lead_sentences = lines[:3] if lines else ["This document contains uploaded content."]
+            raw_lines = [line.strip() for line in full_text.splitlines() if len(line.strip()) > 15]
+            if not raw_lines:
+                raw_lines = [full_text.strip() or "Document content analyzed."]
+
+            top_exec = raw_lines[:2]
+            exec_body = " ".join(top_exec)
+            if not exec_body.endswith("."):
+                exec_body += "."
             executive_summary = (
                 f"This {file_type} provides comprehensive coverage of key concepts and operational procedures. "
-                f"{' '.join(lead_sentences[:2])} "
+                f"{exec_body} "
                 f"The analyzed material has been indexed into semantic vector spaces for instant question answering."
             )
-            key_points = [
-                f"Overview of core subject matter ({word_count} total words analyzed).",
-                "Indexed for semantic similarity search with LangChain and vector retrieval.",
-                "Timestamp and page references are mapped for direct multimedia navigation.",
-                "Ready for interactive chatbot inquiries with token streaming."
-            ]
+
+            key_points = []
+            for line in raw_lines[:5]:
+                clean_pt = re.sub(r"^([•\-\*●]|\d+[\.\)])\s*", "", line).strip()
+                if clean_pt and clean_pt not in key_points:
+                    key_points.append(clean_pt[:140])
+
+            if len(key_points) < 2:
+                key_points.append(f"Overview of core subject matter ({word_count} total words analyzed).")
+                key_points.append("Indexed for semantic similarity search with LangChain and vector retrieval.")
 
         return SummaryResponse(
             document_id=document_id,
