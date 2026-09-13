@@ -4,29 +4,59 @@
  * automatic token injection, error handling, and offline guest sessions.
  */
 
-const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api/v1';
-
 class ApiClient {
   constructor() {
-    this.token = localStorage.getItem('psi_token') || '';
-    this.apiKeyOverride = localStorage.getItem('psi_openai_key') || '';
+    this.token = typeof window !== 'undefined' ? (localStorage.getItem('psi_token') || '') : '';
+    this.apiKeyOverride = typeof window !== 'undefined' ? (localStorage.getItem('psi_openai_key') || '') : '';
+  }
+
+  getBaseUrl() {
+    if (typeof window !== 'undefined') {
+      const custom = localStorage.getItem('psi_backend_url');
+      if (custom && custom.trim()) {
+        return custom.trim().replace(/\/$/, '') + '/api/v1';
+      }
+    }
+    const envUrl = import.meta.env.VITE_API_URL;
+    if (envUrl && envUrl.trim()) {
+      return envUrl.trim().replace(/\/$/, '') + '/api/v1';
+    }
+    return '/api/v1';
+  }
+
+  getBackendUrl() {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('psi_backend_url') || import.meta.env.VITE_API_URL || '';
+  }
+
+  setBackendUrl(url) {
+    if (typeof window === 'undefined') return;
+    if (url && url.trim()) {
+      localStorage.setItem('psi_backend_url', url.trim().replace(/\/$/, ''));
+    } else {
+      localStorage.removeItem('psi_backend_url');
+    }
   }
 
   setToken(token) {
     this.token = token;
-    if (token) {
-      localStorage.setItem('psi_token', token);
-    } else {
-      localStorage.removeItem('psi_token');
+    if (typeof window !== 'undefined') {
+      if (token) {
+        localStorage.setItem('psi_token', token);
+      } else {
+        localStorage.removeItem('psi_token');
+      }
     }
   }
 
   setApiKeyOverride(key) {
     this.apiKeyOverride = key;
-    if (key) {
-      localStorage.setItem('psi_openai_key', key);
-    } else {
-      localStorage.removeItem('psi_openai_key');
+    if (typeof window !== 'undefined') {
+      if (key) {
+        localStorage.setItem('psi_openai_key', key);
+      } else {
+        localStorage.removeItem('psi_openai_key');
+      }
     }
   }
 
@@ -42,12 +72,25 @@ class ApiClient {
   }
 
   async request(endpoint, options = {}) {
-    const url = `${API_BASE}${endpoint}`;
+    const url = `${this.getBaseUrl()}${endpoint}`;
     const headers = { ...this.getHeaders(options.isMultipart), ...options.headers };
 
     try {
       const response = await fetch(url, { ...options, headers });
       
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        throw new Error(
+          'API returned HTML instead of JSON. Backend service is not connected. Please set your Railway Backend URL in Settings (⚙) or configure VITE_API_URL in Vercel.'
+        );
+      }
+
+      if (response.status === 405) {
+        throw new Error(
+          'HTTP 405 Method Not Allowed. The frontend is requesting static Vercel routes instead of your live Railway backend. Please set your Railway Backend URL in Settings (⚙) or configure VITE_API_URL in Vercel.'
+        );
+      }
+
       // Auto handle 401 Unauthorized by obtaining a fresh guest session
       if (response.status === 401 && !endpoint.includes('/auth/')) {
         await this.createGuestSession();
@@ -155,7 +198,7 @@ class ApiClient {
       } catch (_) {}
     }
 
-    const url = `${API_BASE}/documents/${documentId}/chat/stream`;
+    const url = `${this.getBaseUrl()}/documents/${documentId}/chat/stream`;
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -266,7 +309,7 @@ class ApiClient {
 
   // Media Stream URL
   getMediaStreamUrl(documentId) {
-    return `${API_BASE}/media/${documentId}/stream`;
+    return `${this.getBaseUrl()}/media/${documentId}/stream`;
   }
 }
 

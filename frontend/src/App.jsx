@@ -39,30 +39,33 @@ export default function App() {
 
   const { messages, isStreaming, streamedText, sendQuery } = useChatStream(activeFile);
 
+  const [backendError, setBackendError] = useState(null);
+
+  const initUser = async () => {
+    try {
+      setBackendError(null);
+      let me = null;
+      try {
+        me = await api.getMe();
+      } catch (meErr) {
+        if (meErr.message && (meErr.message.includes('Backend') || meErr.message.includes('405') || meErr.message.includes('Unexpected token') || meErr.message.includes('HTML'))) {
+          throw meErr;
+        }
+        const guest = await api.createGuestSession();
+        me = guest.user;
+      }
+      setUser(me);
+      setBackendError(null);
+      await refreshSources();
+    } catch (err) {
+      console.error('[App Init Error]', err);
+      setBackendError(err.message || 'Failed to connect to backend server');
+    }
+  };
+
   // Initialize guest session and initial file list ONCE on mount
   useEffect(() => {
-    let isMounted = true;
-    async function initUser() {
-      try {
-        let me = null;
-        try {
-          me = await api.getMe();
-        } catch (_) {
-          const guest = await api.createGuestSession();
-          me = guest.user;
-        }
-        if (isMounted) {
-          setUser(me);
-          await refreshSources();
-        }
-      } catch (err) {
-        console.error('[App Init Error]', err);
-      }
-    }
     initUser();
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
   const handleWorkspaceModeChange = (newMode) => {
@@ -131,6 +134,25 @@ export default function App() {
         onRefresh={() => refreshSources()}
       />
 
+      {/* Backend Disconnected Notice */}
+      {backendError && (
+        <div className="bg-amber-500/10 border-b border-amber-500/30 px-6 py-2 text-xs font-mono text-amber-900 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="font-bold">Backend Server Not Connected:</span>
+            <span className="text-amber-800">
+              Requests to <code>{api.getBackendUrl() || '/api/v1'}</code> failed. If deployed on Vercel, connect your Railway backend URL.
+            </span>
+          </div>
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="px-2.5 py-1 bg-ink text-paper text-xs font-semibold rounded-[2px] hover:bg-ink/80 transition-colors cursor-pointer"
+          >
+            Configure Backend URL →
+          </button>
+        </div>
+      )}
+
       {/* View Switcher: Workspace vs Library & Threads */}
       {activeTab === 'library' ? (
         <div className="flex-1 min-h-0 overflow-y-auto bg-paper">
@@ -194,6 +216,7 @@ export default function App() {
         onClose={() => setShowSettingsModal(false)}
         gptModel={gptModel}
         setGptModel={setGptModel}
+        onSettingsSaved={initUser}
       />
 
       <AuthModal

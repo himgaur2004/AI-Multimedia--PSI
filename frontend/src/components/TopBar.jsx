@@ -68,10 +68,18 @@ export default function TopBar({
       <div className="flex items-center gap-3">
         <button
           onClick={onRefresh}
-          className="hidden lg:flex hover:text-ink transition-colors items-center gap-1 text-xs font-mono text-sub"
+          className="hidden sm:flex hover:text-ink transition-colors items-center gap-1 text-xs font-mono text-sub cursor-pointer"
           title="Refresh index from backend"
         >
           <span>↻</span> Sync
+        </button>
+
+        <button
+          onClick={onOpenSettings}
+          className="hover:text-ink transition-colors flex items-center gap-1 text-xs font-mono text-sub cursor-pointer"
+          title="Configure backend server & AI settings"
+        >
+          <span>⚙</span> Settings
         </button>
 
         {/* Account Button & Dropdown */}

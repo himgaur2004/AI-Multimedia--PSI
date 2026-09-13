@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 
-export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel }) {
+export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel, onSettingsSaved }) {
   const [keyInput, setKeyInput] = useState('');
+  const [backendUrl, setBackendUrl] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setKeyInput(localStorage.getItem('psi_openai_key') || '');
+      setBackendUrl(api.getBackendUrl() || '');
       setSavedSuccess(false);
     }
   }, [isOpen]);
@@ -16,21 +18,30 @@ export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel }) 
 
   const handleSave = () => {
     api.setApiKeyOverride(keyInput.trim());
+    api.setBackendUrl(backendUrl.trim());
     setSavedSuccess(true);
+    if (onSettingsSaved) {
+      onSettingsSaved({ gptModel, apiKey: keyInput.trim(), backendUrl: backendUrl.trim() });
+    }
     setTimeout(() => {
       setSavedSuccess(false);
       onClose();
-    }, 800);
+    }, 600);
   };
 
   const handleClear = () => {
     api.setApiKeyOverride('');
+    api.setBackendUrl('');
     setKeyInput('');
+    setBackendUrl('');
     setSavedSuccess(true);
+    if (onSettingsSaved) {
+      onSettingsSaved({ gptModel, apiKey: '', backendUrl: '' });
+    }
     setTimeout(() => {
       setSavedSuccess(false);
       onClose();
-    }, 800);
+    }, 600);
   };
 
   return (
@@ -70,7 +81,7 @@ export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel }) 
         </div>
 
         {/* Custom API Key */}
-        <div className="mb-5">
+        <div className="mb-4">
           <label className="block font-mono text-xs text-sub mb-1.5">
             Custom OpenAI API Key <span className="text-[10.5px]">(Optional)</span>
           </label>
@@ -84,6 +95,24 @@ export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel }) 
           <p className="text-[11px] text-sub mt-1 leading-snug">
             Leave blank to utilize the server&apos;s inbuilt vector synthesizer &amp; demo keys. Keys
             are stored locally in your browser.
+          </p>
+        </div>
+
+        {/* Backend API Server URL (Railway) */}
+        <div className="mb-5">
+          <label className="block font-mono text-xs text-sub mb-1.5 flex items-center justify-between">
+            <span>Backend Server URL (Railway)</span>
+            <span className="text-[10.5px] text-accent font-semibold">{backendUrl ? 'Custom' : 'Default'}</span>
+          </label>
+          <input
+            type="url"
+            value={backendUrl}
+            onChange={(e) => setBackendUrl(e.target.value)}
+            placeholder="https://psi-backend-production.up.railway.app"
+            className="w-full text-xs font-mono bg-panel border border-line p-2.5 rounded-[2px] outline-none placeholder:text-sub focus:border-ink"
+          />
+          <p className="text-[11px] text-sub mt-1 leading-snug">
+            Directs queries to your live Railway backend. On Vercel, paste your generated Railway domain here or define <code className="bg-line px-1 py-0.5 rounded text-[10px]">VITE_API_URL</code> in Vercel.
           </p>
         </div>
 
