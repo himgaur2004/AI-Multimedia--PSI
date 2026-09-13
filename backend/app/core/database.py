@@ -17,7 +17,10 @@ class DatabaseManager:
 
     def __init__(self, db_url: str = settings.DATABASE_URL):
         if db_url.startswith(("mongodb://", "mongodb+srv://")):
-            self.db_path = "psi.db"
+            if os.path.isdir("/app/uploads") and os.access("/app/uploads", os.W_OK):
+                self.db_path = "/app/uploads/psi.db"
+            else:
+                self.db_path = "psi.db"
         else:
             self.db_path = db_url.replace("sqlite:///", "")
         self._local = threading.local()
