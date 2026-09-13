@@ -1,4 +1,4 @@
-# Multi-stage production Dockerfile for OmniMind FastAPI backend
+# Multi-stage production Dockerfile for PSI FastAPI backend
 FROM python:3.10-slim AS builder
 
 WORKDIR /app

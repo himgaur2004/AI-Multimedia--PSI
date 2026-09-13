@@ -46,9 +46,8 @@ async def upload_document(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         
-    # Reset stream and save to disk
-    await file.seek(0)
-    file_id, storage_path = document_service.save_upload_file(file.file, file.filename)
+    # Save content bytes directly to disk for 100% byte fidelity
+    file_id, storage_path = document_service.save_upload_file(content, file.filename)
     
     full_text = ""
     transcript_segments = []
@@ -64,6 +63,16 @@ async def upload_document(
                 chunk_size=400,
                 chunk_overlap=80,
                 metadata={"file_type": "pdf", "page": p["page"]}
+            )
+            chunks.extend(page_chunks)
+    elif file_type == "text":
+        full_text, pages_data = document_service.extract_text_content(storage_path)
+        for p in pages_data:
+            page_chunks = document_service.chunk_text(
+                p["text"],
+                chunk_size=400,
+                chunk_overlap=80,
+                metadata={"file_type": "text", "page": p["page"]}
             )
             chunks.extend(page_chunks)
     else:
@@ -155,16 +164,19 @@ def list_documents(
     current_user: dict = Depends(get_current_user),
     conn: sqlite3.Connection = Depends(get_db)
 ):
-    """Retrieve list of all documents uploaded by current user."""
+    """Retrieve list of all documents uploaded by current user or shared in guest room."""
     cursor = conn.cursor()
+    user_id = current_user["id"]
+    is_guest_flag = 1 if current_user.get("is_guest") else 0
     cursor.execute(
         """
-        SELECT id, user_id, filename, original_name, file_type, file_size, duration_seconds, processed, created_at
-        FROM documents
-        WHERE user_id = ?
-        ORDER BY created_at DESC
+        SELECT d.id, d.user_id, d.filename, d.original_name, d.file_type, d.file_size, d.duration_seconds, d.processed, d.created_at
+        FROM documents d
+        LEFT JOIN users u ON d.user_id = u.id
+        WHERE d.user_id = ? OR (? = 1 AND u.is_guest = 1)
+        ORDER BY d.created_at DESC
         """,
-        (current_user["id"],)
+        (user_id, is_guest_flag)
     )
     rows = cursor.fetchall()
     docs = [
@@ -192,15 +204,18 @@ def get_document_details(
 ):
     """Fetch full document details, transcripts, topics, and summary."""
     cursor = conn.cursor()
+    user_id = current_user["id"]
+    is_guest_flag = 1 if current_user.get("is_guest") else 0
     cursor.execute(
         """
         SELECT d.id, d.user_id, d.filename, d.original_name, d.file_type, d.file_size, d.duration_seconds,
                d.processed, d.created_at, c.full_text, c.transcript_segments_json, c.summary, c.topics_json
         FROM documents d
         LEFT JOIN document_contents c ON d.id = c.document_id
-        WHERE d.id = ? AND d.user_id = ?
+        LEFT JOIN users u ON d.user_id = u.id
+        WHERE d.id = ? AND (d.user_id = ? OR (? = 1 AND u.is_guest = 1))
         """,
-        (document_id, current_user["id"])
+        (document_id, user_id, is_guest_flag)
     )
     row = cursor.fetchone()
     if not row:
@@ -235,7 +250,16 @@ def delete_document(
 ):
     """Delete a document, its disk assets, vector index, and database records."""
     cursor = conn.cursor()
-    cursor.execute("SELECT storage_path FROM documents WHERE id = ? AND user_id = ?", (document_id, current_user["id"]))
+    user_id = current_user["id"]
+    is_guest_flag = 1 if current_user.get("is_guest") else 0
+    cursor.execute(
+        """
+        SELECT d.storage_path FROM documents d
+        LEFT JOIN users u ON d.user_id = u.id
+        WHERE d.id = ? AND (d.user_id = ? OR ? = 1 OR u.is_guest = 1 OR u.id IS NULL)
+        """,
+        (document_id, user_id, is_guest_flag)
+    )
     row = cursor.fetchone()
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
@@ -250,6 +274,8 @@ def delete_document(
     # Clear vector store memory
     vector_service.delete_document(document_id)
 
-    # Delete from DB (cascade handles contents and chat messages)
+    # Delete from DB (clean up chat messages, document contents, and document record)
+    cursor.execute("DELETE FROM chat_messages WHERE document_id = ?", (document_id,))
+    cursor.execute("DELETE FROM document_contents WHERE document_id = ?", (document_id,))
     cursor.execute("DELETE FROM documents WHERE id = ?", (document_id,))
     return None

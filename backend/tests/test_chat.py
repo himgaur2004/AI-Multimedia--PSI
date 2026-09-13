@@ -116,3 +116,37 @@ def test_chat_unauthorized_access(client, auth_headers, other_auth_headers, samp
         headers=other_auth_headers
     )
     assert resp.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_chat_dual_modes_and_stream_persistence(client, auth_headers, sample_pdf_bytes):
+    up = client.post("/api/v1/documents/upload", files={"file": ("doc.pdf", sample_pdf_bytes, "application/pdf")}, headers=auth_headers)
+    doc_id = up.json()["id"]
+
+    # 1. Test inbuilt search mode via sync chat
+    resp_inbuilt = client.post(
+        f"/api/v1/documents/{doc_id}/chat",
+        json={"message": "Summarize key architecture", "search_mode": "inbuilt"},
+        headers=auth_headers
+    )
+    assert resp_inbuilt.status_code == status.HTTP_200_OK
+    data_inbuilt = resp_inbuilt.json()
+    assert "Inbuilt RAG" in data_inbuilt["engine"]
+
+    # 2. Test stream chat with search_mode="gpt"
+    resp_stream = client.post(
+        f"/api/v1/documents/{doc_id}/chat/stream",
+        json={"message": "What are the components?", "search_mode": "gpt", "model": "gpt-4o-mini"},
+        headers=auth_headers
+    )
+    assert resp_stream.status_code == status.HTTP_200_OK
+
+    # 3. Check that streaming assistant message was persisted into message history
+    hist_resp = client.get(f"/api/v1/documents/{doc_id}/messages", headers=auth_headers)
+    assert hist_resp.status_code == status.HTTP_200_OK
+    msgs = hist_resp.json()
+    # Should have: user msg 1, asst msg 1, user msg 2, asst msg 2
+    assert len(msgs) == 4
+    assert msgs[2]["role"] == "user"
+    assert msgs[2]["content"] == "What are the components?"
+    assert msgs[3]["role"] == "assistant"
+    assert len(msgs[3]["content"]) > 0

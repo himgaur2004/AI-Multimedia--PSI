@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { api } from '../services/api';
 
 export function ApiKeyModal({ isOpen, onClose }) {
-  const [apiKey, setApiKey] = useState(localStorage.getItem('omnimind_openai_key') || '');
+  const [apiKey, setApiKey] = useState(localStorage.getItem('psi_openai_key') || '');
   const [saved, setSaved] = useState(false);
 
   if (!isOpen) return null;
@@ -59,7 +59,7 @@ export function ApiKeyModal({ isOpen, onClose }) {
         </div>
 
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '16px' }}>
-          By default, OmniMind operates in a high-fidelity deterministic mode that works completely offline.
+          By default, PSI operates in a high-fidelity deterministic mode that works completely offline.
           If you wish to use live OpenAI Whisper and GPT-4o-mini reasoning, provide your API key below:
         </p>
 

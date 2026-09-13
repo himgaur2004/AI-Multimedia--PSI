@@ -6,9 +6,10 @@ __pycache__/
 .Python
 backend/venv/
 backend/.pytest_cache/
+backend/*.db*
+*.sqlite*
 backend/uploads/*
 !backend/uploads/.gitkeep
-backend/*.db
 .coverage
 htmlcov/
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export function SummaryCard({ summaryData }) {
+export function SummaryCard({ summaryData, onJump }) {
   const [copied, setCopied] = useState(false);
 
   if (!summaryData) {
@@ -36,14 +36,35 @@ export function SummaryCard({ summaryData }) {
       {summaryData.key_points && summaryData.key_points.length > 0 && (
         <div>
           <h4 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Key Takeaways
+            Key Takeaways & Timestamps
           </h4>
-          <ul style={{ paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {summaryData.key_points.map((pt, idx) => (
-              <li key={idx} style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {pt}
-              </li>
-            ))}
+          <ul style={{ paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {summaryData.key_points.map((pt, idx) => {
+              const match = pt.match(/^\[([0-9]{1,2}:[0-9]{2})\]\s*(.*)/);
+              if (match) {
+                const ts = match[1];
+                const text = match[2];
+                return (
+                  <li key={idx} style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', listStyle: 'none', marginLeft: '-16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        className="inline-play-btn"
+                        onClick={() => onJump && onJump(ts)}
+                        title={`Play at ${ts}`}
+                      >
+                        ▶ Play {ts}
+                      </button>
+                      <span>{text}</span>
+                    </div>
+                  </li>
+                );
+              }
+              return (
+                <li key={idx} style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  {pt}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

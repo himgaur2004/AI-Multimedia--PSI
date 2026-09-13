@@ -8,11 +8,30 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from app.core.config import settings
+
+
+def generate_api_key(prefix: str = "omni") -> str:
+    """Generate a high-entropy API key prefixed for PSI authentication."""
+    random_part = secrets.token_urlsafe(32)
+    return f"{prefix}_{random_part}"
+
+
+def hash_api_key(api_key: str) -> str:
+    """Hash API key using SHA-256 for secure database storage."""
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+
+
+def verify_api_key(plain_key: str, hashed_key: str) -> bool:
+    """Verify an API key in constant time."""
+    computed_hash = hash_api_key(plain_key)
+    return hmac.compare_digest(computed_hash, hashed_key)
+
 
 
 def hash_password(password: str) -> str:

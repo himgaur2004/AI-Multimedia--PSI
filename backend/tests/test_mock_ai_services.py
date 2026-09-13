@@ -76,13 +76,14 @@ def test_rag_service_openai_sync_success():
     mock_client.chat.completions.create.return_value = mock_resp
 
     with patch("app.services.rag_service.OpenAI", return_value=mock_client):
-        answer, citations = rag_service.answer_query(
+        answer, citations, follow_ups = rag_service.answer_query(
             document_id="unindexed-id",
             query="Tell me about latency",
             file_type="video",
             api_key_override="sk-mock-chat-key"
         )
         assert answer == "This is a grounded answer citing [01:23]."
+        assert len(follow_ups) > 0
 
 
 def test_rag_service_openai_sync_error_fallback():
@@ -91,13 +92,14 @@ def test_rag_service_openai_sync_error_fallback():
     mock_client.chat.completions.create.side_effect = Exception("OpenAI outage")
 
     with patch("app.services.rag_service.OpenAI", return_value=mock_client):
-        answer, citations = rag_service.answer_query(
+        answer, citations, follow_ups = rag_service.answer_query(
             document_id="unindexed-id",
             query="Tell me about latency",
             file_type="pdf",
             api_key_override="sk-failing-key"
         )
         assert "no specific passages matched" in answer
+        assert len(follow_ups) > 0
 
 
 @pytest.mark.asyncio
@@ -129,6 +131,28 @@ async def test_rag_service_openai_stream_success():
         assert len(chunks) == 3  # 2 token frames + 1 terminal frame
         assert "Streaming" in chunks[0]
         assert "done" in chunks[-1]
+
+
+@pytest.mark.asyncio
+async def test_rag_service_openai_stream_error_fallback():
+    """Test OpenAI streaming error fallback in rag_service."""
+    mock_client = MagicMock()
+    mock_client.chat.completions.stream.side_effect = Exception("Stream connection failed")
+
+    with patch("app.services.rag_service.OpenAI", return_value=mock_client):
+        gen = rag_service.stream_query(
+            document_id="unindexed-id",
+            query="Stream error test",
+            file_type="document",
+            api_key_override="sk-failing-key",
+            search_mode="gpt"
+        )
+        chunks = []
+        async for chunk in gen:
+            chunks.append(chunk)
+
+        assert len(chunks) > 0
+        assert "GPT LLM (Fallback: Inbuilt RAG)" in chunks[-1]
 
 
 def test_summary_service_openai_success():
@@ -234,3 +258,100 @@ def test_global_exception_handler():
         assert "An internal server error occurred" in resp.json()["detail"]
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_get_media_duration_variants():
+    """Test get_media_duration parsing format and stream duration metadata."""
+    from app.services.transcription_service import get_media_duration
+    import subprocess
+
+    # 1. Format duration
+    mock_res_fmt = MagicMock()
+    mock_res_fmt.returncode = 0
+    mock_res_fmt.stdout = '{"format": {"duration": "14.25"}, "streams": []}'
+    with patch("subprocess.run", return_value=mock_res_fmt):
+        dur = get_media_duration("/dummy/video.mp4")
+        assert dur == 14.25
+
+    # 2. Streams duration fallback
+    mock_res_stream = MagicMock()
+    mock_res_stream.returncode = 0
+    mock_res_stream.stdout = '{"format": {}, "streams": [{"duration": "30.50"}]}'
+    with patch("subprocess.run", return_value=mock_res_stream):
+        dur = get_media_duration("/dummy/video.mp4")
+        assert dur == 30.50
+
+    # 3. Subprocess failure
+    mock_fail = MagicMock()
+    mock_fail.returncode = 1
+    with patch("subprocess.run", return_value=mock_fail):
+        assert get_media_duration("/dummy/video.mp4") == 0.0
+
+    # 4. Exception
+    with patch("subprocess.run", side_effect=Exception("ffprobe missing")):
+        assert get_media_duration("/dummy/video.mp4") == 0.0
+
+
+def test_local_transcription_branches(tmp_path):
+    """Test deterministic transcription with short (<10s) and long (>10s) audio."""
+    dummy_file = tmp_path / "short_clip.mp4"
+    dummy_file.write_bytes(b"dummy video")
+
+    # Short clip with speech recognition mock
+    mock_sr = MagicMock()
+    mock_recognizer = MagicMock()
+    mock_recognizer.recognize_google.return_value = "Spoken sentence in short video"
+    mock_sr.Recognizer.return_value = mock_recognizer
+    mock_sr.AudioFile.return_value.__enter__.return_value = MagicMock()
+
+    with patch("app.services.transcription_service.get_media_duration", return_value=5.04), \
+         patch("subprocess.run", return_value=MagicMock(returncode=0)), \
+         patch("os.path.exists", return_value=True), \
+         patch("os.path.getsize", return_value=1000), \
+         patch("app.services.transcription_service.sr", mock_sr):
+        full_text, segs, dur = transcription_service._generate_deterministic_transcript(str(dummy_file))
+        assert dur == 5.04
+        assert len(segs) == 1
+        assert "Spoken sentence" in full_text
+
+    # Longer clip (>10s)
+    with patch("app.services.transcription_service.get_media_duration", return_value=35.0), \
+         patch("subprocess.run", return_value=MagicMock(returncode=1)):
+        full_text, segs, dur = transcription_service._generate_deterministic_transcript(str(dummy_file))
+        assert dur == 35.0
+        assert len(segs) >= 2
+
+
+def test_summary_service_custom_speech_and_edge_cases():
+    """Test custom dialogue summary and topic formatting edge cases."""
+    # 1. Single segment with dialogue
+    s1 = summary_service._generate_deterministic_summary(
+        document_id="doc-custom",
+        full_text="[00:00 - 00:05] Ek Taraf India ki ek simple medical student Isha",
+        file_type="video"
+    )
+    assert "Ek Taraf India" in s1.executive_summary
+    assert len(s1.key_points) == 2
+
+    # 2. Media full text without timestamp brackets
+    s2 = summary_service._generate_deterministic_summary(
+        document_id="doc-no-ts",
+        full_text="Just raw unformatted text without timestamps",
+        file_type="video"
+    )
+    assert "Just raw unformatted" in s2.executive_summary
+    assert len(s2.key_points) > 0
+
+    # 3. Topic extraction with short titles and fallback titles
+    top_res = summary_service._generate_deterministic_topics(
+        document_id="doc-edge",
+        transcript_segments=[
+            {"start": 10.0, "end": 5.0, "text": "Quick title"},
+            {"start": 12.0, "end": 15.0, "text": ""}
+        ]
+    )
+    assert top_res.total_topics == 2
+    assert top_res.topics[0].end_time > top_res.topics[0].start_time
+    assert "Topic Chapter" in top_res.topics[1].title
+
+

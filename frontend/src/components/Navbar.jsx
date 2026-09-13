@@ -14,18 +14,12 @@ export function Navbar({
   return (
     <header className="navbar">
       <div className="nav-brand">
-        <div className="brand-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
+        <div className="w-8 h-8 rounded-lg bg-[#141413] flex items-center justify-center p-1.5 shadow-sm shrink-0">
+          <img src="/psi-icon-white.webp" alt="PSI" className="w-full h-full object-contain" />
         </div>
         <div>
-          <h1 className="brand-title">OmniMind</h1>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            AI Document & Multimedia Q&A
-          </span>
+          <h1 className="brand-title">PSI</h1>
+          <span className="brand-sub font-mono">Pan Science Innovation</span>
         </div>
       </div>
 

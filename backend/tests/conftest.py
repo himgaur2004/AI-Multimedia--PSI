@@ -13,37 +13,49 @@ from app.core.config import settings
 from app.core.database import db_manager, get_db
 from app.core.security import create_access_token, hash_password
 from app.core.rate_limit import limiter
+from app.core.cache import cache_manager
 from app.main import app
 
 
 @pytest.fixture(autouse=True)
-def reset_rate_limiter():
-    """Reset rate limiter state before each test."""
+def reset_rate_limiter_and_cache():
+    """Reset rate limiter and cache state before each test."""
     limiter.clear()
+    cache_manager.clear()
 
 
 @pytest.fixture(scope="session")
 def test_db_path(tmp_path_factory):
     """Create a temporary sqlite db for isolation."""
-    fn = tmp_path_factory.mktemp("data") / "test_omnimind.db"
+    fn = tmp_path_factory.mktemp("data") / "test_psi.db"
     return str(fn)
 
 
 @pytest.fixture(autouse=True)
 def setup_test_db(monkeypatch, test_db_path):
-    """Set db_manager to point to an isolated test db."""
+    """Set db_manager to point to an isolated test db and isolate OpenAI calls."""
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    from app.services.rag_service import rag_service
+    from app.services.summary_service import summary_service
+    from app.services.transcription_service import transcription_service
+    monkeypatch.setattr(rag_service, "api_key", "")
+    monkeypatch.setattr(summary_service, "api_key", "")
+    monkeypatch.setattr(transcription_service, "api_key", "")
+
     db_manager.db_path = test_db_path
     db_manager.init_db()
     
     # Ensure fresh tables
     conn = sqlite3.connect(test_db_path)
     cursor = conn.cursor()
+    cursor.execute("DELETE FROM api_keys;")
     cursor.execute("DELETE FROM chat_messages;")
     cursor.execute("DELETE FROM document_contents;")
     cursor.execute("DELETE FROM documents;")
     cursor.execute("DELETE FROM users;")
     conn.commit()
     conn.close()
+
 
 
 @pytest.fixture
@@ -58,7 +70,7 @@ def test_user():
     """Create a primary test user in the database."""
     user_id = "test-user-uuid-1234"
     username = "testengineer"
-    email = "engineer@omnimind.io"
+    email = "engineer@psi.io"
     hashed_pwd = hash_password("ValidP@ssw0rd123")
     
     conn = db_manager.get_connection()
@@ -81,7 +93,7 @@ def other_user():
     """Create a second distinct user to test multi-tenant isolation."""
     user_id = "other-user-uuid-5678"
     username = "otherengineer"
-    email = "other@omnimind.io"
+    email = "other@psi.io"
     hashed_pwd = hash_password("ValidP@ssw0rd456")
     
     conn = db_manager.get_connection()

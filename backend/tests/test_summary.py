@@ -18,6 +18,19 @@ def test_get_summary_pdf(client, auth_headers, sample_pdf_bytes):
     assert data["word_count"] > 0
 
 
+def test_get_summary_video(client, auth_headers):
+    video_bytes = b"\x00\x00\x00 ftypisom" + b"\x00" * 300
+    up = client.post("/api/v1/documents/upload", files={"file": ("clip.mp4", video_bytes, "video/mp4")}, headers=auth_headers)
+    doc_id = up.json()["id"]
+
+    resp = client.get(f"/api/v1/documents/{doc_id}/summary", headers=auth_headers)
+    assert resp.status_code == status.HTTP_200_OK
+    data = resp.json()
+    assert data["document_id"] == doc_id
+    assert "executive_summary" in data
+    assert any("[00:" in pt for pt in data["key_points"])
+
+
 def test_get_summary_not_found(client, auth_headers):
     resp = client.get("/api/v1/documents/nonexistent-doc/summary", headers=auth_headers)
     assert resp.status_code == status.HTTP_404_NOT_FOUND

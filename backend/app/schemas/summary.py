@@ -21,6 +21,9 @@ class SummaryResponse(BaseModel):
     executive_summary: str
     key_points: List[str]
     word_count: int
+    engine: str = "Self-Built RAG (Deterministic Synthesizer)"
+    retrieval_method: str = "Semantic Vector Search (TF-IDF & Cosine Similarity)"
+    transcription_engine: Optional[str] = None
 
 
 class TopicsResponse(BaseModel):

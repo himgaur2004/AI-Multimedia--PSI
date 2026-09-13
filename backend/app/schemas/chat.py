@@ -22,11 +22,16 @@ class ChatMessageSchema(BaseModel):
     content: str
     citations: Optional[List[Citation]] = []
     created_at: Optional[str] = None
+    engine: Optional[str] = "Self-Built RAG • Semantic Vector Search"
+    retrieval_method: Optional[str] = "Semantic Vector Search"
 
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     api_key_override: Optional[str] = None
+    chat_history: Optional[List[dict]] = None
+    search_mode: Optional[str] = None  # 'inbuilt' (self-built RAG + vector search) or 'gpt' (OpenAI LLM)
+    model: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -34,3 +39,7 @@ class ChatResponse(BaseModel):
     answer: str
     citations: List[Citation] = []
     document_id: str
+    follow_up_questions: List[str] = []
+    engine: str = "Self-Built RAG Grounding Engine"
+    retrieval_method: str = "Semantic Vector Search (TF-IDF & Cosine Similarity)"
+

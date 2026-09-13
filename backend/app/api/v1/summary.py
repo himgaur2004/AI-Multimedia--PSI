@@ -23,14 +23,17 @@ def get_document_summary(
 ):
     """Retrieve executive summary and key takeaways for a document or multimedia asset."""
     cursor = conn.cursor()
+    user_id = current_user["id"]
+    is_guest_flag = 1 if current_user.get("is_guest") else 0
     cursor.execute(
         """
-        SELECT d.id, d.file_type, c.full_text, c.summary
+        SELECT d.id, d.file_type, c.full_text, c.summary, c.topics_json
         FROM documents d
         JOIN document_contents c ON d.id = c.document_id
-        WHERE d.id = ? AND d.user_id = ?
+        LEFT JOIN users u ON d.user_id = u.id
+        WHERE d.id = ? AND (d.user_id = ? OR (? = 1 AND u.is_guest = 1))
         """,
-        (document_id, current_user["id"])
+        (document_id, user_id, is_guest_flag)
     )
     row = cursor.fetchone()
     if not row:
@@ -38,15 +41,33 @@ def get_document_summary(
 
     if row["summary"]:
         words = (row["full_text"] or "").split()
-        return SummaryResponse(
-            document_id=document_id,
-            executive_summary=row["summary"],
-            key_points=[
+        key_points = []
+        if row["file_type"] in {"audio", "video"}:
+            try:
+                raw_topics = json.loads(row["topics_json"] or "[]")
+                for t in raw_topics:
+                    fmt = t.get("formatted_start", "00:00")
+                    title = t.get("title", "Topic")
+                    desc = t.get("summary", "")
+                    key_points.append(f"[{fmt}] {title}: {desc}" if desc else f"[{fmt}] {title}")
+            except Exception:
+                pass
+
+        if not key_points:
+            key_points = [
                 "Comprehensive overview of primary themes and concepts.",
                 "Semantic indices mapped to vector space for real-time querying.",
                 "Timestamps and citations aligned with source passages."
-            ],
-            word_count=len(words)
+            ]
+
+        return SummaryResponse(
+            document_id=document_id,
+            executive_summary=row["summary"],
+            key_points=key_points,
+            word_count=len(words),
+            engine="Self-Built RAG (Deterministic Synthesizer)",
+            retrieval_method="Semantic Vector Search (TF-IDF & Cosine Similarity)",
+            transcription_engine="Local SpeechRecognition (FFmpeg + FFprobe)" if row["file_type"] in {"audio", "video"} else "Local Document Parser"
         )
 
     # Generate summary if not already cached
@@ -73,14 +94,17 @@ def get_document_topics(
     Allows frontend media player to seek to precise playback intervals.
     """
     cursor = conn.cursor()
+    user_id = current_user["id"]
+    is_guest_flag = 1 if current_user.get("is_guest") else 0
     cursor.execute(
         """
         SELECT d.id, d.file_type, c.transcript_segments_json, c.topics_json
         FROM documents d
         JOIN document_contents c ON d.id = c.document_id
-        WHERE d.id = ? AND d.user_id = ?
+        LEFT JOIN users u ON d.user_id = u.id
+        WHERE d.id = ? AND (d.user_id = ? OR (? = 1 AND u.is_guest = 1))
         """,
-        (document_id, current_user["id"])
+        (document_id, user_id, is_guest_flag)
     )
     row = cursor.fetchone()
     if not row:

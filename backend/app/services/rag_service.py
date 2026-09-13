@@ -4,18 +4,28 @@ Integrates LangChain patterns with OpenAI Chat models and SSE token streaming.
 Strictly grounds answers in timestamps [MM:SS] for multimedia and [Page X] for documents.
 """
 
+import asyncio
+import hashlib
 import json
 import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from app.core.config import settings
+from app.core.cache import cache_manager
 from app.schemas.chat import Citation
 from app.services.vector_service import vector_service
+from app.services.rag_synthesizer import (
+    generate_prompt as synth_generate_prompt,
+    generate_follow_up_questions as synth_generate_follow_ups,
+    generate_deterministic_answer as synth_deterministic_answer,
+)
 
 try:
+    import httpx
     from openai import OpenAI
 except ImportError:
     OpenAI = None
+    httpx = None
 
 
 class RAGService:
@@ -24,12 +34,33 @@ class RAGService:
     def __init__(self):
         self.api_key = settings.OPENAI_API_KEY
         self.model = settings.OPENAI_MODEL
+        self.last_engine = "Self-Built RAG Grounding Engine"
+        self.last_retrieval_method = "FAISS Semantic Vector Search"
+
+    def _get_client(self, api_key: str):
+        """Create an OpenAI client safely using an explicit httpx sync client to avoid proxy conflicts."""
+        if not api_key or OpenAI is None:
+            return None
+        try:
+            http_client = httpx.Client(timeout=30.0) if httpx is not None else None
+            return OpenAI(api_key=api_key, http_client=http_client) if http_client is not None else OpenAI(api_key=api_key)
+        except Exception:
+            try:
+                return OpenAI(api_key=api_key)
+            except Exception:
+                return None
+
+    def _get_cache_key(self, document_id: str, query: str, search_mode: Optional[str]) -> str:
+        """Derive deterministic cache key for document query."""
+        normalized = f"{query.strip().lower()}:{search_mode or 'auto'}"
+        digest = hashlib.md5(normalized.encode("utf-8")).hexdigest()
+        return f"rag:cache:{document_id}:{digest}"
 
     def build_context(
         self,
         document_id: str,
         query: str,
-        top_k: int = 4
+        top_k: int = 5
     ) -> Tuple[str, List[Citation]]:
         """
         Retrieve relevant chunks from vector store and build context prompt.
@@ -57,7 +88,7 @@ class RAGService:
                     start_time=start_sec,
                     end_time=end_sec,
                     formatted_timestamp=fmt_start,
-                    snippet=text[:150]
+                    snippet=text[:500]
                 ))
             else:
                 page_num = meta.get("page", 1)
@@ -67,118 +98,218 @@ class RAGService:
                 citations.append(Citation(
                     source="pdf",
                     page=page_num,
-                    snippet=text[:150]
+                    snippet=text[:500]
                 ))
 
         context_str = "\n\n".join(context_parts) if context_parts else "No relevant context found."
         return context_str, citations
 
-    def generate_prompt(self, query: str, context: str, file_type: str) -> str:
-        """Create a prompt instructing the LLM to provide timestamps and citations."""
-        citation_instruction = (
-            "When referencing specific points in audio or video files, YOU MUST ALWAYS mention the exact timestamp "
-            "in square brackets like [01:23] or [00:45] so the user can click to play that segment directly."
-            if file_type in {"audio", "video"}
-            else "When referencing points from the document, cite the page number like [Page 1] or [Page 2]."
-        )
+    def generate_prompt(self, query: str, context: str, file_type: str, chat_history: Optional[List[dict]] = None) -> str:
+        """Create a prompt instructing the LLM to provide timestamps, citations, and follow-ups."""
+        return synth_generate_prompt(query, context, file_type, chat_history)
 
-        prompt = f"""You are OmniMind, a high-precision AI document and multimedia analysis assistant.
-Use the following retrieved context to answer the user's question accurately.
-
-Instructions:
-1. Ground your answer strictly in the provided context.
-2. {citation_instruction}
-3. If the answer cannot be found in the context, politely state that the information is not present.
-4. Keep the explanation clear, professional, and well-structured.
-
-CONTEXT:
-{context}
-
-USER QUESTION:
-{query}
-
-ANSWER:"""
-        return prompt
+    def generate_follow_up_questions(
+        self,
+        query: str,
+        context: str,
+        file_type: str
+    ) -> List[str]:
+        """Generate 3 smart, context-aware follow-up question suggestions."""
+        return synth_generate_follow_ups(query, context, file_type)
 
     def answer_query(
         self,
         document_id: str,
         query: str,
         file_type: str = "document",
-        api_key_override: str = ""
-    ) -> Tuple[str, List[Citation]]:
-        """Synchronous Q&A generation returning answer text and structured citations."""
+        api_key_override: str = "",
+        chat_history: Optional[List[dict]] = None,
+        search_mode: Optional[str] = None,
+        model_override: Optional[str] = None
+    ) -> Tuple[str, List[Citation], List[str]]:
+        """Synchronous Q&A generation with Redis caching, structured citations, and follow-ups."""
+        cache_key = self._get_cache_key(document_id, query, search_mode)
+        cached_data = cache_manager.get(cache_key)
+        if cached_data and isinstance(cached_data, dict):
+            cached_ans = cached_data.get("answer")
+            cached_cits = [Citation(**c) for c in cached_data.get("citations", [])]
+            cached_fups = cached_data.get("follow_ups", [])
+            self.last_engine = cached_data.get("engine", self.last_engine)
+            self.last_retrieval_method = cached_data.get("retrieval_method", self.last_retrieval_method)
+            return cached_ans, cached_cits, cached_fups
+
         context, citations = self.build_context(document_id, query)
         active_key = api_key_override or self.api_key
+        follow_ups = self.generate_follow_up_questions(query, context, file_type)
+        model_to_use = model_override or self.model
 
-        if active_key and OpenAI is not None:
+        # Mode 1: Explicit Inbuilt RAG / FAISS Semantic Search
+        if search_mode == "inbuilt":
+            self.last_engine = "Inbuilt RAG / FAISS Search"
+            self.last_retrieval_method = "FAISS Semantic Vector Search"
+            answer = self._generate_deterministic_answer(query, citations, file_type)
+            cache_manager.set(cache_key, {
+                "answer": answer,
+                "citations": [c.model_dump() for c in citations],
+                "follow_ups": follow_ups,
+                "engine": self.last_engine,
+                "retrieval_method": self.last_retrieval_method
+            })
+            return answer, citations, follow_ups
+
+        # Mode 2: GPT LLM Mode (Attempts OpenAI model synthesis with grounding context)
+        client = self._get_client(active_key)
+        if client is not None:
             try:
-                client = OpenAI(api_key=active_key)
-                prompt = self.generate_prompt(query, context, file_type)
+                prompt = self.generate_prompt(query, context, file_type, chat_history)
                 completion = client.chat.completions.create(
-                    model=self.model,
+                    model=model_to_use,
                     messages=[
                         {"role": "system", "content": "You are a professional document & multimedia research assistant."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.2,
-                    max_tokens=600,
+                    max_tokens=650,
                 )
                 answer = completion.choices[0].message.content or ""
-                return answer, citations
+                self.last_engine = f"OpenAI {model_to_use} LLM"
+                self.last_retrieval_method = "FAISS Semantic Vector Search + GPT LLM Generation"
+                cache_manager.set(cache_key, {
+                    "answer": answer,
+                    "citations": [c.model_dump() for c in citations],
+                    "follow_ups": follow_ups,
+                    "engine": self.last_engine,
+                    "retrieval_method": self.last_retrieval_method
+                })
+                return answer, citations, follow_ups
             except Exception as e:
-                print(f"[RAGService] OpenAI Chat error: {e}. Falling back to deterministic RAG engine.")
+                print(f"[RAGService] OpenAI Chat error: {e}. Falling back to Inbuilt FAISS RAG engine.")
+                self.last_engine = "GPT LLM (Fallback: Inbuilt RAG)"
+        else:
+            self.last_engine = "Inbuilt RAG / FAISS Search"
 
-        # Deterministic RAG engine fallback (offline/CI/CD mode)
+        self.last_retrieval_method = "FAISS Semantic Vector Search"
         answer = self._generate_deterministic_answer(query, citations, file_type)
-        return answer, citations
+        cache_manager.set(cache_key, {
+            "answer": answer,
+            "citations": [c.model_dump() for c in citations],
+            "follow_ups": follow_ups,
+            "engine": self.last_engine,
+            "retrieval_method": self.last_retrieval_method
+        })
+        return answer, citations, follow_ups
 
     async def stream_query(
         self,
         document_id: str,
         query: str,
         file_type: str = "document",
-        api_key_override: str = ""
+        api_key_override: str = "",
+        chat_history: Optional[List[dict]] = None,
+        search_mode: Optional[str] = None,
+        model_override: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         """
         Server-Sent Events (SSE) generator streaming token chunks in real-time.
-        Yields JSON formatted SSE frames: `data: {...}\\n\\n`
+        Yields JSON formatted SSE frames: `data: {...}\n\n`
         """
+        cache_key = self._get_cache_key(document_id, query, search_mode)
+        cached_data = cache_manager.get(cache_key)
+        if cached_data and isinstance(cached_data, dict):
+            cached_ans = cached_data.get("answer", "")
+            cached_cits = cached_data.get("citations", [])
+            cached_fups = cached_data.get("follow_ups", [])
+            engine = cached_data.get("engine", self.last_engine)
+            method = cached_data.get("retrieval_method", "FAISS Semantic Vector Search (Redis Cached)")
+            words = cached_ans.split(" ")
+            for i, word in enumerate(words):
+                token = word + (" " if i < len(words) - 1 else "")
+                yield f"data: {json.dumps({'chunk': token, 'done': False})}\n\n"
+                await asyncio.sleep(0.01)
+            yield f"data: {json.dumps({'done': True, 'citations': cached_cits, 'follow_up_questions': cached_fups, 'engine': engine, 'retrieval_method': method})}\n\n"
+            return
+
         context, citations = self.build_context(document_id, query)
         active_key = api_key_override or self.api_key
+        follow_ups = self.generate_follow_up_questions(query, context, file_type)
+        model_to_use = model_override or self.model
 
-        if active_key and OpenAI is not None:
+        # Mode 1: Explicit Inbuilt RAG / FAISS Semantic Search
+        if search_mode == "inbuilt":
+            self.last_engine = "Inbuilt RAG / FAISS Search"
+            self.last_retrieval_method = "FAISS Semantic Vector Search"
+            answer = self._generate_deterministic_answer(query, citations, file_type)
+            words = answer.split(" ")
+            for i, word in enumerate(words):
+                token = word + (" " if i < len(words) - 1 else "")
+                yield f"data: {json.dumps({'chunk': token, 'done': False})}\n\n"
+                await asyncio.sleep(0.015)
+
+            cache_manager.set(cache_key, {
+                "answer": answer,
+                "citations": [c.model_dump() for c in citations],
+                "follow_ups": follow_ups,
+                "engine": self.last_engine,
+                "retrieval_method": self.last_retrieval_method
+            })
+            yield f"data: {json.dumps({'done': True, 'citations': [c.model_dump() for c in citations], 'follow_up_questions': follow_ups, 'engine': self.last_engine, 'retrieval_method': self.last_retrieval_method})}\n\n"
+            return
+
+        # Mode 2: GPT LLM Mode
+        client = self._get_client(active_key)
+        if client is not None:
             try:
-                client = OpenAI(api_key=active_key)
-                prompt = self.generate_prompt(query, context, file_type)
+                prompt = self.generate_prompt(query, context, file_type, chat_history)
                 stream = client.chat.completions.stream(
-                    model=self.model,
+                    model=model_to_use,
                     messages=[
                         {"role": "system", "content": "You are a professional document & multimedia research assistant."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.2,
-                    max_tokens=600,
+                    max_tokens=650,
                 )
+                self.last_engine = f"OpenAI {model_to_use} LLM"
+                self.last_retrieval_method = "FAISS Semantic Vector Search + GPT LLM Generation"
+                accumulated = []
                 for chunk in stream:
                     delta = chunk.choices[0].delta.content if chunk.choices else ""
                     if delta:
+                        accumulated.append(delta)
                         yield f"data: {json.dumps({'chunk': delta, 'done': False})}\n\n"
-                        
-                # Send terminal frame with citations
-                yield f"data: {json.dumps({'done': True, 'citations': [c.model_dump() for c in citations]})}\n\n"
+                        await asyncio.sleep(0.005)
+
+                full_ans = "".join(accumulated)
+                cache_manager.set(cache_key, {
+                    "answer": full_ans,
+                    "citations": [c.model_dump() for c in citations],
+                    "follow_ups": follow_ups,
+                    "engine": self.last_engine,
+                    "retrieval_method": self.last_retrieval_method
+                })
+                yield f"data: {json.dumps({'done': True, 'citations': [c.model_dump() for c in citations], 'follow_up_questions': follow_ups, 'engine': self.last_engine, 'retrieval_method': self.last_retrieval_method})}\n\n"
                 return
             except Exception as e:
                 print(f"[RAGService] Stream fallback triggered: {e}")
 
-        # Stream fallback tokens word-by-word
+        # Stream fallback tokens word-by-word with real-time SSE micro-delay
+        self.last_engine = "GPT LLM (Fallback: Inbuilt RAG)" if search_mode == "gpt" else "Inbuilt RAG / FAISS Search"
+        self.last_retrieval_method = "FAISS Semantic Vector Search"
         answer = self._generate_deterministic_answer(query, citations, file_type)
         words = answer.split(" ")
         for i, word in enumerate(words):
             token = word + (" " if i < len(words) - 1 else "")
             yield f"data: {json.dumps({'chunk': token, 'done': False})}\n\n"
+            await asyncio.sleep(0.015)
 
-        yield f"data: {json.dumps({'done': True, 'citations': [c.model_dump() for c in citations]})}\n\n"
+        cache_manager.set(cache_key, {
+            "answer": answer,
+            "citations": [c.model_dump() for c in citations],
+            "follow_ups": follow_ups,
+            "engine": self.last_engine,
+            "retrieval_method": self.last_retrieval_method
+        })
+        yield f"data: {json.dumps({'done': True, 'citations': [c.model_dump() for c in citations], 'follow_up_questions': follow_ups, 'engine': self.last_engine, 'retrieval_method': self.last_retrieval_method})}\n\n"
 
     def _generate_deterministic_answer(
         self,
@@ -186,28 +317,10 @@ ANSWER:"""
         citations: List[Citation],
         file_type: str
     ) -> str:
-        """Deterministic context-aware answer generator for testing and offline environments."""
-        if not citations:
-            return (
-                "Based on the uploaded file, no specific passages matched your query directly. "
-                "Please verify your question or ensure the file contains relevant topics."
-            )
-
-        top_citation = citations[0]
-        if file_type in {"audio", "video"} and top_citation.formatted_timestamp:
-            ts = top_citation.formatted_timestamp
-            return (
-                f"According to the recording at timestamp [{ts}], the discussion focuses directly on this topic: "
-                f"\"{top_citation.snippet.strip()}\". "
-                f"You can click the [{ts}] badge or the Play button above to listen to this exact segment."
-            )
-        else:
-            page = top_citation.page or 1
-            return (
-                f"Based on [Page {page}] of the document, the text highlights: "
-                f"\"{top_citation.snippet.strip()}\". "
-                f"This addresses your inquiry regarding \"{query.strip()}\"."
-            )
+        """Deterministic context-aware answer generator with candidate relevance scoring."""
+        return synth_deterministic_answer(query, citations, file_type)
 
 
 rag_service = RAGService()
+
+

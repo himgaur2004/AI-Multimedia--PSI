@@ -37,3 +37,24 @@ class TokenPayload(BaseModel):
     sub: str
     username: str
     exp: Optional[int] = None
+
+
+class ApiKeyCreate(BaseModel):
+    name: str = Field("Default API Key", min_length=1, max_length=100)
+
+
+class ApiKeyResponse(BaseModel):
+    id: str
+    name: str
+    key_prefix: str
+    created_at: str
+    is_active: bool
+
+
+class ApiKeyGeneratedResponse(BaseModel):
+    id: str
+    name: str
+    api_key: str
+    key_prefix: str
+    created_at: str
+

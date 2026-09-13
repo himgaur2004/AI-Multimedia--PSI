@@ -1,32 +1,32 @@
 /**
- * OmniMind Frontend API Client.
+ * PSI Frontend API Client.
  * Senior SDE Pattern: Resilient Fetch-based client with SSE streaming support,
  * automatic token injection, error handling, and offline guest sessions.
  */
 
-const API_BASE = '/api/v1';
+const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api/v1';
 
 class ApiClient {
   constructor() {
-    this.token = localStorage.getItem('omnimind_token') || '';
-    this.apiKeyOverride = localStorage.getItem('omnimind_openai_key') || '';
+    this.token = localStorage.getItem('psi_token') || '';
+    this.apiKeyOverride = localStorage.getItem('psi_openai_key') || '';
   }
 
   setToken(token) {
     this.token = token;
     if (token) {
-      localStorage.setItem('omnimind_token', token);
+      localStorage.setItem('psi_token', token);
     } else {
-      localStorage.removeItem('omnimind_token');
+      localStorage.removeItem('psi_token');
     }
   }
 
   setApiKeyOverride(key) {
     this.apiKeyOverride = key;
     if (key) {
-      localStorage.setItem('omnimind_openai_key', key);
+      localStorage.setItem('psi_openai_key', key);
     } else {
-      localStorage.removeItem('omnimind_openai_key');
+      localStorage.removeItem('psi_openai_key');
     }
   }
 
@@ -52,8 +52,7 @@ class ApiClient {
       if (response.status === 401 && !endpoint.includes('/auth/')) {
         await this.createGuestSession();
         // Retry original request with fresh credentials
-        const retryHeaders = { ...this.getHeaders(options.isMultipart), ...options.headers };
-        return await fetch(url, { ...options, headers: retryHeaders });
+        return await this.request(endpoint, options);
       }
 
       if (!response.ok) {
@@ -102,6 +101,25 @@ class ApiClient {
     return await this.request('/auth/me');
   }
 
+  // Multi-User API Key Authentication Endpoints
+  async createApiKey(name = 'PSI API Key') {
+    return await this.request('/auth/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async listApiKeys() {
+    return await this.request('/auth/api-keys');
+  }
+
+  async revokeApiKey(keyId) {
+    return await this.request(`/auth/api-keys/${keyId}`, {
+      method: 'DELETE',
+    });
+  }
+
+
   // Document Management
   async uploadFile(file) {
     const formData = new FormData();
@@ -130,29 +148,78 @@ class ApiClient {
   }
 
   // Chat & Real-Time Streaming
-  async streamChat(documentId, message, onChunk, onDone, onError) {
+  async streamChat(documentId, message, onChunk, onDone, onError, chatHistory = [], searchMode = 'inbuilt', model = null, signal = null) {
+    if (!this.token) {
+      try {
+        await this.createGuestSession();
+      } catch (_) {}
+    }
+
     const url = `${API_BASE}/documents/${documentId}/chat/stream`;
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: this.getHeaders(),
+        signal: signal || undefined,
         body: JSON.stringify({
           message,
+          chat_history: chatHistory.length > 0 ? chatHistory : undefined,
           api_key_override: this.apiKeyOverride || undefined,
+          search_mode: searchMode || 'inbuilt',
+          model: model || undefined,
         }),
       });
 
       if (!response.ok) {
+        // Fallback to standard chat endpoint if SSE fails
+        const fallbackResp = await this.request(`/documents/${documentId}/chat`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          signal: signal || undefined,
+          body: JSON.stringify({
+            message,
+            chat_history: chatHistory.length > 0 ? chatHistory : undefined,
+            api_key_override: this.apiKeyOverride || undefined,
+            search_mode: searchMode || 'inbuilt',
+            model: model || undefined,
+          }),
+        });
+        if (fallbackResp && fallbackResp.answer) {
+          onChunk(fallbackResp.answer);
+          onDone(fallbackResp.citations || [], fallbackResp.follow_up_questions || [], fallbackResp.engine, fallbackResp.retrieval_method);
+          return;
+        }
         throw new Error(`Stream error HTTP ${response.status}`);
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
+      let receivedDone = false;
 
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {
+          if (buffer.trim()) {
+            const lines = buffer.split('\n\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const payload = JSON.parse(line.replace('data: ', '').trim());
+                  if (payload.chunk) onChunk(payload.chunk);
+                  if (payload.done) {
+                    receivedDone = true;
+                    onDone(payload.citations || [], payload.follow_up_questions || [], payload.engine, payload.retrieval_method);
+                  }
+                } catch (_) {}
+              }
+            }
+          }
+          if (!receivedDone) {
+            onDone([], []);
+          }
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n\n');
@@ -166,7 +233,8 @@ class ApiClient {
                 onChunk(payload.chunk);
               }
               if (payload.done) {
-                onDone(payload.citations || []);
+                receivedDone = true;
+                onDone(payload.citations || [], payload.follow_up_questions || [], payload.engine, payload.retrieval_method);
               }
             } catch (jsonErr) {
               console.warn('[SSE Parse Warning]', jsonErr);
@@ -175,6 +243,10 @@ class ApiClient {
         }
       }
     } catch (err) {
+      if (err.name === 'AbortError') {
+        return; // Clean cancellation, no leak
+      }
+      console.error('[StreamChat Error]', err);
       if (onError) onError(err);
     }
   }
@@ -199,3 +271,5 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+export default api;
+

@@ -124,3 +124,21 @@ def test_multi_user_document_isolation(client, auth_headers, other_auth_headers,
 
     other_get = client.get(f"/api/v1/documents/{doc_id}", headers=other_auth_headers)
     assert other_get.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_upload_text_file_success(client, auth_headers):
+    files = {"file": ("notes.txt", b"Antigravity AI Document System and semantic vector search architecture.", "text/plain")}
+    resp = client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
+    assert resp.status_code == status.HTTP_200_OK
+    data = resp.json()
+    assert data["file_type"] == "text"
+    assert data["original_name"] == "notes.txt"
+    assert "vector search" in data["full_text"]
+
+
+def test_upload_no_filename(client, auth_headers):
+    files = {"file": ("", b"hello", "text/plain")}
+    resp = client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
+    assert resp.status_code in {status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY}
+
+
