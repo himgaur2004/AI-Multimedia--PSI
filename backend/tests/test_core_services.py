@@ -304,33 +304,25 @@ def test_database_manager_session():
 
 
 def test_cors_origins_parsing():
-    """Test Settings.parse_cors_origins with various string and list formats."""
+    """Test Settings.cors_origins with various string and list formats."""
     from app.core.config import Settings
     
     # 1. Asterisk
     s1 = Settings(CORS_ORIGINS="*")
-    assert s1.CORS_ORIGINS == ["*"]
+    assert s1.cors_origins == ["*"]
 
     # 2. Empty string
     s2 = Settings(CORS_ORIGINS="")
-    assert s2.CORS_ORIGINS == ["*"]
+    assert s2.cors_origins == ["*"]
 
     # 3. Comma-separated string
     s3 = Settings(CORS_ORIGINS="https://ai-multimedia-psi.vercel.app, http://localhost:3000")
-    assert "https://ai-multimedia-psi.vercel.app" in s3.CORS_ORIGINS
-    assert "http://localhost:3000" in s3.CORS_ORIGINS
+    assert "https://ai-multimedia-psi.vercel.app" in s3.cors_origins
+    assert "http://localhost:3000" in s3.cors_origins
 
     # 4. JSON list string
     s4 = Settings(CORS_ORIGINS='["https://ai-multimedia-psi.vercel.app"]')
-    assert s4.CORS_ORIGINS == ["https://ai-multimedia-psi.vercel.app"]
-
-    # 5. Native list
-    s5 = Settings(CORS_ORIGINS=["https://example.com"])
-    assert s5.CORS_ORIGINS == ["https://example.com"]
-
-    # 6. Fallback non-string/non-list
-    s6 = Settings(CORS_ORIGINS=123)
-    assert s6.CORS_ORIGINS == ["*"]
+    assert s4.cors_origins == ["https://ai-multimedia-psi.vercel.app"]
 
 
 def test_database_manager_mongo_url_handling():

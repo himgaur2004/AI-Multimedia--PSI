@@ -44,33 +44,24 @@ class Settings(BaseSettings):
     # Rate Limiting (requests per minute)
     RATE_LIMIT_PER_MINUTE: int = 60
     
-    # CORS — production origins should be set via CORS_ORIGINS env var
-    CORS_ORIGINS: Any = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ]
+    # CORS — production origins set via CORS_ORIGINS env var as string or JSON
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000"
 
-    @field_validator("CORS_ORIGINS", mode="after")
-    @classmethod
-    def parse_cors_origins(cls, v: Any) -> List[str]:
-        if isinstance(v, str):
-            v = v.strip()
-            if not v or v == "*":
-                return ["*"]
-            if v.startswith("[") and v.endswith("]"):
-                try:
-                    import json
-                    parsed = json.loads(v)
-                    if isinstance(parsed, list):
-                        return [str(item).strip() for item in parsed if item]
-                except Exception:
-                    pass
-            return [origin.strip() for origin in v.replace("\n", ",").split(",") if origin.strip()]
-        elif isinstance(v, (list, tuple, set)):
-            return [str(origin).strip() for origin in v if origin]
-        return ["*"]
+    @property
+    def cors_origins(self) -> List[str]:
+        """Parsed list of allowed CORS origins."""
+        v = str(self.CORS_ORIGINS).strip()
+        if not v or v == "*":
+            return ["*"]
+        if v.startswith("[") and v.endswith("]"):
+            try:
+                import json
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if item]
+            except Exception:
+                pass
+        return [origin.strip() for origin in v.replace("\n", ",").split(",") if origin.strip()]
 
     model_config = SettingsConfigDict(
         env_file=".env",
