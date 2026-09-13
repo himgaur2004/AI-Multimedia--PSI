@@ -49,13 +49,19 @@ class MongoManager:
 
         try:
             url = self.connection_url
-            self._client = MongoClient(
-                url,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=5000,
-                maxPoolSize=50,
-                minPoolSize=5,
-            )
+            client_kwargs = {
+                "serverSelectionTimeoutMS": 5000,
+                "connectTimeoutMS": 5000,
+                "maxPoolSize": 50,
+                "minPoolSize": 5,
+            }
+            try:
+                import certifi
+                client_kwargs["tlsCAFile"] = certifi.where()
+            except ImportError:
+                pass
+
+            self._client = MongoClient(url, **client_kwargs)
             # Verify connectivity
             self._client.admin.command("ping")
             
