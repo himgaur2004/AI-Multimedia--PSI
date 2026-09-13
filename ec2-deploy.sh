@@ -70,8 +70,8 @@ EOF
 
 # 6. Build and launch Docker Compose stack with Caddy automatic SSL
 echo "🐳 Launching Docker Compose stack with backend + Caddy SSL..."
-docker compose -f docker-compose.ec2.yml down --remove-orphans || true
-docker compose -f docker-compose.ec2.yml up -d --build
+sudo docker compose -f docker-compose.ec2.yml down --remove-orphans || true
+sudo docker compose -f docker-compose.ec2.yml up -d --build
 
 # 7. Wait and verify health
 echo "⏳ Waiting for backend and SSL certificates to initialize..."
