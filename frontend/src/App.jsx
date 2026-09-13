@@ -193,7 +193,7 @@ export default function App() {
             <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <span className="font-bold">Backend Server Not Connected:</span>
             <span className="text-amber-800">
-              Requests to <code>{api.getBackendUrl() || '/api/v1'}</code> failed. If deployed on Vercel, connect your Railway backend URL.
+              Requests to <code>{api.getBackendUrl() || '/api/v1'}</code> failed. Connecting to AWS EC2 backend (https://15.252.181.80.nip.io).
             </span>
           </div>
           <button

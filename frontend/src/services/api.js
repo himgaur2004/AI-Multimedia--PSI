@@ -15,7 +15,9 @@ class ApiClient {
   getBaseUrl() {
     if (typeof window !== 'undefined') {
       const custom = localStorage.getItem('psi_backend_url');
-      if (custom && custom.trim()) {
+      if (custom && (custom.includes('railway.app') || custom.includes('railway.internal') || custom.includes('undefined') || custom.includes('null'))) {
+        localStorage.removeItem('psi_backend_url');
+      } else if (custom && custom.trim()) {
         return custom.trim().replace(/\/$/, '') + '/api/v1';
       }
     }
@@ -35,7 +37,11 @@ class ApiClient {
   getBackendUrl() {
     if (typeof window === 'undefined') return '';
     const custom = localStorage.getItem('psi_backend_url');
-    if (custom && custom.trim()) return custom.trim();
+    if (custom && (custom.includes('railway.app') || custom.includes('railway.internal') || custom.includes('undefined') || custom.includes('null'))) {
+      localStorage.removeItem('psi_backend_url');
+    } else if (custom && custom.trim()) {
+      return custom.trim();
+    }
     if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim()) {
       return import.meta.env.VITE_API_URL.trim();
     }
@@ -92,8 +98,9 @@ class ApiClient {
     return headers;
   }
 
-  async request(endpoint, options = {}) {
-    const url = `${this.getBaseUrl()}${endpoint}`;
+  async request(endpoint, options = {}, isRetry = false) {
+    const baseUrl = this.getBaseUrl();
+    const url = `${baseUrl}${endpoint}`;
     const headers = { ...this.getHeaders(options.isMultipart), ...options.headers };
 
     try {
@@ -128,6 +135,12 @@ class ApiClient {
       if (response.status === 204) return null;
       return await response.json();
     } catch (err) {
+      // If a custom URL failed and we haven't retried yet, clear it and retry with AWS default
+      if (!isRetry && typeof window !== 'undefined' && localStorage.getItem('psi_backend_url')) {
+        console.warn(`[API Warning] Connection to custom host failed. Purging custom URL and falling back to live AWS EC2 backend...`);
+        localStorage.removeItem('psi_backend_url');
+        return this.request(endpoint, options, true);
+      }
       console.error(`[API Error] ${endpoint}:`, err);
       throw err;
     }

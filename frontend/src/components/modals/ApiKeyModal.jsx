@@ -98,21 +98,21 @@ export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel, on
           </p>
         </div>
 
-        {/* Backend API Server URL (Railway) */}
+        {/* Backend API Server URL (AWS EC2) */}
         <div className="mb-5">
           <label className="block font-mono text-xs text-sub mb-1.5 flex items-center justify-between">
-            <span>Backend Server URL (Railway)</span>
-            <span className="text-[10.5px] text-accent font-semibold">{backendUrl ? 'Custom' : 'Default'}</span>
+            <span>Backend Server URL (AWS EC2 HTTPS)</span>
+            <span className="text-[10.5px] text-accent font-semibold">{backendUrl ? 'Custom' : 'Default (AWS)'}</span>
           </label>
           <input
             type="url"
             value={backendUrl}
             onChange={(e) => setBackendUrl(e.target.value)}
-            placeholder="https://psi-backend-production.up.railway.app"
+            placeholder="https://15.252.181.80.nip.io"
             className="w-full text-xs font-mono bg-panel border border-line p-2.5 rounded-[2px] outline-none placeholder:text-sub focus:border-ink"
           />
           <p className="text-[11px] text-sub mt-1 leading-snug">
-            Directs queries to your live Railway backend. On Vercel, paste your generated Railway domain here or define <code className="bg-line px-1 py-0.5 rounded text-[10px]">VITE_API_URL</code> in Vercel.
+            Directs queries to your live AWS EC2 backend. Default: <code className="bg-line px-1 py-0.5 rounded text-[10px]">https://15.252.181.80.nip.io</code>
           </p>
         </div>
 
