@@ -1,0 +1,20 @@
+# Caddy configuration for PSI AWS EC2 deployment
+# Automatically obtains free Let's Encrypt SSL for your domain or <ip>.nip.io
+
+{$DOMAIN:localhost} {
+    reverse_proxy backend:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Enable gzip & zstd compression
+    encode gzip zstd
+
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}
