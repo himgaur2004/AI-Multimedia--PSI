@@ -1,4 +1,5 @@
 # Multi-stage production Dockerfile for PSI FastAPI backend
+# Supports building from repository root (Railway default)
 FROM python:3.10-slim AS builder
 
 WORKDIR /app
@@ -9,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # Final runtime container
@@ -24,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local
-COPY . /app
+COPY backend/ /app/
 
 # Create unprivileged user for security best practices
 RUN useradd -m -u 1000 appuser && \
