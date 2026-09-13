@@ -26,8 +26,4 @@ numpy>=1.26.0
 openai>=1.10.0
 SpeechRecognition>=3.10.0
 
-# Testing (excluded from Docker via .dockerignore)
-pytest>=8.1.0
-pytest-asyncio>=0.23.5
-pytest-cov>=4.1.0
-pytest-mock>=3.12.0
+
