@@ -40,11 +40,12 @@ jobs:
       - name: Run Pytest with 95%+ coverage enforcement
         working-directory: ./backend
         env:
+          PYTHONPATH: "."
           DATABASE_URL: "sqlite:///./test_psi.db"
           SECRET_KEY: "ci_test_secret_key_not_for_production"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'test_key' }}
         run: |
-          pytest --cov=app --cov-report=term-missing --cov-fail-under=95
+          python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=95
 
   # ── 2. Frontend: build verification ─────────────────────────────────────────
   frontend-build:
@@ -126,7 +127,7 @@ jobs:
     name: "Deploy Backend → Railway"
     needs: [docker-build]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && secrets.RAILWAY_TOKEN != ''
     environment:
       name: production
       url: ${{ vars.RAILWAY_BACKEND_URL }}
@@ -146,7 +147,7 @@ jobs:
     name: "Deploy Frontend → Vercel"
     needs: [docker-build]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && secrets.VERCEL_TOKEN != ''
     environment:
       name: production
       url: ${{ vars.VERCEL_FRONTEND_URL }}
