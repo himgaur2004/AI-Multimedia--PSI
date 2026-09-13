@@ -45,7 +45,7 @@ def test_mongo_manager_configured_from_database_url(monkeypatch):
     monkeypatch.setattr(settings, "DATABASE_URL", "mongodb+srv://user:pass@cluster.mongodb.net/psi_prod")
     mgr = MongoManager()
     assert mgr.is_configured
-    assert mgr.connection_url == "mongodb+srv://user:pass@cluster.mongodb.net/psi_prod"
+    assert mgr.connection_url == "mongodb+srv://user:pass@cluster.mongodb.net/psi_prod?authSource=admin"
 
 
 def test_mongo_manager_connect_and_indexes_mocked(monkeypatch):
@@ -103,4 +103,32 @@ def test_mongo_manager_auth_failure_closes_client(monkeypatch):
         assert connected is False
         assert not mgr.is_connected
         mock_client.close.assert_called_once()
+
+
+def test_mongo_manager_edges_and_disconnected():
+    """Verify disconnected collection properties, index error handling, and ping failure."""
+    mgr = MongoManager()
+    assert mgr.users is None
+    assert mgr.documents is None
+    assert mgr.document_contents is None
+    assert mgr.chat_messages is None
+    assert mgr.api_keys is None
+    assert mgr.ping() is False
+    mgr.ensure_indexes()  # Should return immediately when not connected
+
+    # Ping exception branch
+    mgr._connected = True
+    mock_client = MagicMock()
+    mock_client.admin.command.side_effect = Exception("Ping network error")
+    mgr._client = mock_client
+    assert mgr.ping() is False
+
+    # Index creation exception branch
+    mock_db = MagicMock()
+    mock_coll = MagicMock()
+    mock_coll.create_index.side_effect = Exception("Index error")
+    mock_db.__getitem__.return_value = mock_coll
+    mgr._db = mock_db
+    mgr.ensure_indexes()  # Should handle exception without raising
+
 

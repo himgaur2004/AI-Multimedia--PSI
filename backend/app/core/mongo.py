@@ -34,12 +34,16 @@ class MongoManager:
 
     @property
     def connection_url(self) -> str:
-        """Get the active MongoDB connection URL."""
-        if settings.MONGODB_URL:
-            return settings.MONGODB_URL
-        if settings.DATABASE_URL.startswith(("mongodb://", "mongodb+srv://")):
-            return settings.DATABASE_URL
-        return ""
+        """Get the active MongoDB connection URL with authSource=admin guarantee."""
+        url = settings.MONGODB_URL
+        if not url and settings.DATABASE_URL.startswith(("mongodb://", "mongodb+srv://")):
+            url = settings.DATABASE_URL
+        if not url:
+            return ""
+        if "mongodb+srv://" in url and "authSource=" not in url:
+            delimiter = "&" if "?" in url else "?"
+            url = f"{url}{delimiter}authSource=admin"
+        return url
 
     def connect(self) -> bool:
         """Initialize MongoDB client and ensure indexes exist."""
@@ -66,11 +70,13 @@ class MongoManager:
             self._client.admin.command("ping")
             
             db_name = settings.MONGODB_DB_NAME
-            # If database name is embedded in URI, use it
-            default_db = self._client.get_default_database()
-            if default_db is not None and default_db.name:
-                self._db = default_db
-            else:
+            try:
+                default_db = self._client.get_default_database()
+                if default_db is not None and default_db.name:
+                    self._db = default_db
+                else:
+                    self._db = self._client[db_name]
+            except Exception:
                 self._db = self._client[db_name]
 
             self._connected = True
