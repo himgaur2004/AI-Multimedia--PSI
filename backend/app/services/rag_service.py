@@ -290,7 +290,7 @@ class RAGService:
         if client is not None:
             try:
                 prompt = self.generate_prompt(query, context, file_type, chat_history)
-                stream = client.chat.completions.stream(
+                stream = client.chat.completions.create(
                     model=model_to_use,
                     messages=[
                         {"role": "system", "content": "You are a professional document & multimedia research assistant."},
@@ -298,12 +298,13 @@ class RAGService:
                     ],
                     temperature=0.2,
                     max_tokens=650,
+                    stream=True
                 )
                 self.last_engine = f"OpenAI {model_to_use} LLM"
                 self.last_retrieval_method = "FAISS Semantic Vector Search + GPT LLM Generation"
                 accumulated = []
                 for chunk in stream:
-                    delta = chunk.choices[0].delta.content if chunk.choices else ""
+                    delta = (chunk.choices[0].delta.content or "") if chunk.choices and chunk.choices[0].delta else ""
                     if delta:
                         accumulated.append(delta)
                         yield f"data: {json.dumps({'chunk': delta, 'done': False})}\n\n"

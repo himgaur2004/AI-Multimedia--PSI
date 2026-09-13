@@ -115,7 +115,7 @@ async def test_rag_service_openai_stream_success():
     c2.choices[0].delta.content = "response tokens."
 
     mock_client = MagicMock()
-    mock_client.chat.completions.stream.return_value = [c1, c2]
+    mock_client.chat.completions.create.return_value = [c1, c2]
 
     with patch("app.services.rag_service.OpenAI", return_value=mock_client):
         gen = rag_service.stream_query(
@@ -137,7 +137,7 @@ async def test_rag_service_openai_stream_success():
 async def test_rag_service_openai_stream_error_fallback():
     """Test OpenAI streaming error fallback in rag_service."""
     mock_client = MagicMock()
-    mock_client.chat.completions.stream.side_effect = Exception("Stream connection failed")
+    mock_client.chat.completions.create.side_effect = Exception("Stream connection failed")
 
     with patch("app.services.rag_service.OpenAI", return_value=mock_client):
         gen = rag_service.stream_query(
