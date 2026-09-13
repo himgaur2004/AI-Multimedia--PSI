@@ -4,7 +4,7 @@
  * automatic token injection, error handling, and offline guest sessions.
  */
 
-export const DEFAULT_BACKEND_URL = 'https://ai-multimedia-psi-production.up.railway.app';
+export const DEFAULT_BACKEND_URL = 'https://15.252.181.80.nip.io';
 
 class ApiClient {
   constructor() {
