@@ -18,6 +18,8 @@ from app.services.rag_synthesizer import (
     generate_prompt as synth_generate_prompt,
     generate_follow_up_questions as synth_generate_follow_ups,
     generate_deterministic_answer as synth_deterministic_answer,
+    is_assistant_identity_query,
+    generate_identity_response,
 )
 
 try:
@@ -138,6 +140,17 @@ class RAGService:
             self.last_retrieval_method = cached_data.get("retrieval_method", self.last_retrieval_method)
             return cached_ans, cached_cits, cached_fups
 
+        if is_assistant_identity_query(query):
+            self.last_engine = "PSI Assistant Core"
+            self.last_retrieval_method = "Direct System Grounding"
+            ans = generate_identity_response(query)
+            fups = [
+                "What file formats can I upload?",
+                "How do timestamp playback badges work?",
+                "Can you summarize this document?"
+            ]
+            return ans, [], fups
+
         context, citations = self.build_context(document_id, query)
         active_key = api_key_override or self.api_key
         follow_ups = self.generate_follow_up_questions(query, context, file_type)
@@ -227,6 +240,23 @@ class RAGService:
                 yield f"data: {json.dumps({'chunk': token, 'done': False})}\n\n"
                 await asyncio.sleep(0.01)
             yield f"data: {json.dumps({'done': True, 'citations': cached_cits, 'follow_up_questions': cached_fups, 'engine': engine, 'retrieval_method': method})}\n\n"
+            return
+
+        if is_assistant_identity_query(query):
+            self.last_engine = "PSI Assistant Core"
+            self.last_retrieval_method = "Direct System Grounding"
+            ans = generate_identity_response(query)
+            fups = [
+                "What file formats can I upload?",
+                "How do timestamp playback badges work?",
+                "Can you summarize this document?"
+            ]
+            words = ans.split(" ")
+            for i, word in enumerate(words):
+                token = word + (" " if i < len(words) - 1 else "")
+                yield f"data: {json.dumps({'chunk': token, 'done': False})}\n\n"
+                await asyncio.sleep(0.01)
+            yield f"data: {json.dumps({'done': True, 'citations': [], 'follow_up_questions': fups, 'engine': self.last_engine, 'retrieval_method': self.last_retrieval_method})}\n\n"
             return
 
         context, citations = self.build_context(document_id, query)

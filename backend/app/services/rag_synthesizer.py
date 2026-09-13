@@ -131,12 +131,60 @@ def generate_follow_up_questions(
     return suggestions[:3]
 
 
+def is_assistant_identity_query(query: str) -> bool:
+    """Detect if query is asking about the assistant's identity, features, or capabilities."""
+    q = query.strip().lower()
+    patterns = [
+        r"\b(who|what) are you\b",
+        r"\bwho made you\b",
+        r"\bwho created you\b",
+        r"\btell me about (yourself|you)\b",
+        r"\binformation (of|about) you\b",
+        r"\binfo (of|about) you\b",
+        r"\byour information\b",
+        r"\bwhat is psi\b",
+        r"\bwhat can you do\b",
+        r"\bwhat do you do\b",
+        r"\bwhat is this (app|system|website|platform|software)\b",
+        r"\bhow does this work\b",
+        r"\bwhat features do you have\b",
+        r"\bintroduce yourself\b",
+        r"^(hi|hello|hey|greetings|help)(\s+psi|\s+bot)?$",
+    ]
+    return any(re.search(pat, q) for pat in patterns)
+
+
+def generate_identity_response(query: str, active_filename: Optional[str] = None) -> str:
+    """Provides an authoritative introduction to PSI, its capabilities, and multimedia features."""
+    file_note = (
+        f"\nCurrently, you have selected: **{active_filename}**. "
+        "You can ask me questions about this file, request a summary, or click any timestamp to seek playback."
+        if active_filename
+        else "\nYou can upload a PDF, audio, or video file in the left panel to begin your research."
+    )
+    return (
+        "I am **PSI** (**Pan Science Innovation**), your AI Document & Multimedia Research Assistant.\n\n"
+        "### Key Capabilities & Features:\n"
+        "• **Multimodal Ingestion**: Upload PDFs, video recordings (MP4/WebM/MKV), and audio tracks (MP3/WAV).\n"
+        "• **Granular Speech Transcription**: Transcribes speech with millisecond timestamp markers [MM:SS].\n"
+        "• **Interactive Media Playback**: Clicking any timestamp badge directly seeks the video/audio player.\n"
+        "• **Grounded Citation Reasoning**: Every claim is strictly grounded with [Page X] or [MM:SS] citations.\n"
+        "• **Topic & Chapter Breakdown**: Automatically extracts topic chapters and structured outlines.\n"
+        f"{file_note}\n\n"
+        "How can I assist your research today?"
+    )
+
+
 def generate_deterministic_answer(
     query: str,
     citations: List[Citation],
-    file_type: str
+    file_type: str,
+    active_filename: Optional[str] = None
 ) -> str:
     """Deterministic context-aware answer generator with candidate relevance scoring."""
+    if is_assistant_identity_query(query):
+        return generate_identity_response(query, active_filename)
+
     if not citations:
         return (
             "Based on the uploaded file, no specific passages matched your query directly. "
@@ -188,10 +236,22 @@ def generate_deterministic_answer(
     scored_candidates.sort(key=lambda x: x[0], reverse=True)
     top_relevant = [item for item in scored_candidates if item[0] > 0]
 
+    is_summary = any(k in q_lower for k in ["summar", "overview", "outline", "main point", "key point", "about the", "what is this", "presentation", "talk"])
+    if not top_relevant and not is_summary:
+        source_label = "recording" if file_type in {"audio", "video"} else "document"
+        return (
+            f"Based on the analyzed {source_label}, no specific passages directly address \"{query.strip()}\".\n\n"
+            "Here are some suggested topics you can explore from this file:\n"
+            "• Ask for an executive summary of the content\n"
+            "• Inquire about the key discussion points or architecture\n"
+            "• Ask about specific chapters or timestamps indexed in the timeline"
+        )
+
+    chosen_candidates = top_relevant if top_relevant else scored_candidates
     if file_type in {"audio", "video"} and top_citation.formatted_timestamp:
         ts = top_citation.formatted_timestamp
         lines = [f"According to the recording around [{ts}]:"]
-        chosen_items = top_relevant[:4] if top_relevant else scored_candidates[:4]
+        chosen_items = chosen_candidates[:4]
         seen = set()
         for score, text_item, page_num, ts_val in chosen_items:
             if text_item not in seen:
@@ -203,7 +263,7 @@ def generate_deterministic_answer(
     else:
         page = top_citation.page or 1
         lines = [f"Based on [Page {page}] of the document:"]
-        chosen = [item[1] for item in (top_relevant[:4] if top_relevant else scored_candidates[:4])]
+        chosen = [item[1] for item in chosen_candidates[:4]]
         seen = set()
         for pt in chosen:
             if pt not in seen:

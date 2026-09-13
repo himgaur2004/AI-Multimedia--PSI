@@ -237,12 +237,55 @@ TRANSCRIPT:
             transcription_engine="Local SpeechRecognition (FFmpeg + FFprobe)" if file_type in {"audio", "video"} else "Local Document Parser"
         )
 
+    def _extract_clean_topic_title(self, text: str, idx: int) -> str:
+        """Extract a meaningful, specific topic chapter title from segment text, stripping conversational filler."""
+        filler_pattern = re.compile(
+            r"^(in contrast( to)?|by contrast|on the other hand|furthermore|moreover|additionally|"
+            r"as we can see|as you can see|let's (look|begin|talk|discuss)|moving on to|next we have|"
+            r"looking at|when we look at|so basically|well you know|in terms of|with regard to|"
+            r"today we are discussing|first of all|now let's examine|we can observe that|"
+            r"it is worth noting that|welcome to the presentation|in this video)\s*[,:]?\s*",
+            re.IGNORECASE
+        )
+        clean = filler_pattern.sub("", text).strip()
+        clean = re.sub(r"^[^\w]+", "", clean).strip()
+
+        # Domain concept mappings for architectural and multimedia discussions
+        lower = clean.lower()
+        if any(k in lower for k in ["architecture", "design pattern", "trade-off"]):
+            return "System Architecture & Engineering Trade-offs"
+        if any(k in lower for k in ["ingestion", "whisper", "transcription", "audio frame"]):
+            return "Data Ingestion & Audio Transcription"
+        if any(k in lower for k in ["vector", "embedding", "faiss", "similarity search"]):
+            return "Semantic Vector Search & Embeddings"
+        if any(k in lower for k in ["rag", "langchain", "reasoning", "ground"]):
+            return "RAG Reasoning & Citation Grounding"
+        if any(k in lower for k in ["player", "playback", "seek", "badge", "timestamp"]):
+            return "Interactive Media Player & Timestamp Seeking"
+        if any(k in lower for k in ["conclusion", "deployment", "docker", "test coverage"]):
+            return "Containerized Deployment & Verification"
+
+        # General extraction: skip stop words and build clean Title Cased topic
+        stopwords = {
+            "a", "an", "the", "and", "or", "but", "if", "then", "of", "to", "in", "on", "for",
+            "with", "at", "by", "from", "up", "about", "into", "over", "after", "is", "are", "was",
+            "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "can", "could",
+            "should", "would", "will", "this", "that", "these", "those", "we", "you", "they", "it",
+            "our", "your", "their", "its", "so", "just", "now", "also", "very"
+        }
+        tokens = [w for w in re.sub(r"[^\w\s]", " ", clean).split() if w.lower() not in stopwords and len(w) > 2]
+        if len(tokens) >= 2:
+            return " ".join(tokens[:4]).title()
+        elif tokens:
+            return f"Topic: {tokens[0].title()} Overview"
+        return f"Topic Chapter {idx + 1}"
+
     def _generate_deterministic_topics(
         self,
         document_id: str,
         transcript_segments: List[Dict[str, Any]]
     ) -> TopicsResponse:
-        """Group transcript segments into logical chapters with timestamps."""
+        """Group transcript segments into logical chapters with specific, informative timestamps."""
         topics: List[TopicSegment] = []
 
         for idx, seg in enumerate(transcript_segments):
@@ -254,15 +297,7 @@ TRANSCRIPT:
             
             # Clean any leading timestamp prefixes e.g. "(00:15 - 01:02)" or "[00:15]"
             clean_title = re.sub(r"^[\[\(][^\]\)]*[\]\)]\s*", "", seg_text).strip()
-            clean_title = re.sub(r"^[^\w]+", "", clean_title)
-            words = clean_title.split()
-            if len(words) > 6:
-                topic_title = " ".join(words[:5]).capitalize() + "..."
-            elif words:
-                topic_title = " ".join(words).capitalize()
-            else:
-                topic_title = f"Topic Chapter {idx + 1}"
-
+            topic_title = self._extract_clean_topic_title(clean_title, idx)
 
             topics.append(TopicSegment(
                 id=idx + 1,

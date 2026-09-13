@@ -190,6 +190,43 @@ def test_rag_service_fallback():
     specific_ans = rag_service._generate_deterministic_answer("what are requirements", sample_cites, "pdf")
     assert "Based on [Page 1]" in specific_ans
 
+    # Test unmatched query fallback
+    unmatched_ans = rag_service._generate_deterministic_answer("xylophone quantum physics", sample_cites, "pdf")
+    assert "no specific passages directly address" in unmatched_ans
+
+    # Test identity queries
+    from app.services.rag_synthesizer import is_assistant_identity_query, generate_identity_response
+    assert is_assistant_identity_query("who are you") is True
+    assert is_assistant_identity_query("information of you") is True
+    assert is_assistant_identity_query("what can you do") is True
+    assert is_assistant_identity_query("what is the stipend") is False
+
+    id_resp = generate_identity_response("who are you", "research_paper.pdf")
+    assert "PSI" in id_resp
+    assert "research_paper.pdf" in id_resp
+
+    ans, cits, fups = rag_service.answer_query("doc-1", "who are you")
+    assert "PSI" in ans
+    assert len(fups) > 0
+
+    # Stream query identity test
+    import asyncio
+    async def _test_stream_id():
+        chunks = []
+        async for frame in rag_service.stream_query("doc-1", "information of you"):
+            chunks.append(frame)
+        return "".join(chunks)
+    streamed_out = asyncio.run(_test_stream_id())
+    assert "PSI" in streamed_out
+
+    # Test topic title extraction with contrast stripping
+    title_1 = summary_service._extract_clean_topic_title("In contrast to earlier methods, system architecture design is modular", 0)
+    assert "System Architecture" in title_1
+    title_2 = summary_service._extract_clean_topic_title("Furthermore, speech transcription with Whisper aligns audio frames", 1)
+    assert "Data Ingestion" in title_2
+    title_3 = summary_service._extract_clean_topic_title("Moving on to evaluating experimental results and metrics", 2)
+    assert len(title_3) > 0
+
 
 def test_summary_and_transcription_fallbacks():
     text = "Paragraph one with detailed system information.\nParagraph two explaining vector indexing."
