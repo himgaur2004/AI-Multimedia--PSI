@@ -4,6 +4,8 @@
  * automatic token injection, error handling, and offline guest sessions.
  */
 
+export const DEFAULT_BACKEND_URL = 'https://ai-multimedia-psi-production.up.railway.app';
+
 class ApiClient {
   constructor() {
     this.token = typeof window !== 'undefined' ? (localStorage.getItem('psi_token') || '') : '';
@@ -21,12 +23,27 @@ class ApiClient {
     if (envUrl && envUrl.trim()) {
       return envUrl.trim().replace(/\/$/, '') + '/api/v1';
     }
+    if (typeof window !== 'undefined') {
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (!isLocalhost) {
+        return `${DEFAULT_BACKEND_URL}/api/v1`;
+      }
+    }
     return '/api/v1';
   }
 
   getBackendUrl() {
     if (typeof window === 'undefined') return '';
-    return localStorage.getItem('psi_backend_url') || import.meta.env.VITE_API_URL || '';
+    const custom = localStorage.getItem('psi_backend_url');
+    if (custom && custom.trim()) return custom.trim();
+    if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim()) {
+      return import.meta.env.VITE_API_URL.trim();
+    }
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (!isLocalhost) {
+      return DEFAULT_BACKEND_URL;
+    }
+    return '';
   }
 
   setBackendUrl(url) {
@@ -39,7 +56,7 @@ class ApiClient {
   }
 
   setToken(token) {
-    this.token = token;
+    this.token = token || '';
     if (typeof window !== 'undefined') {
       if (token) {
         localStorage.setItem('psi_token', token);
@@ -47,6 +64,10 @@ class ApiClient {
         localStorage.removeItem('psi_token');
       }
     }
+  }
+
+  logout() {
+    this.setToken('');
   }
 
   setApiKeyOverride(key) {
@@ -81,21 +102,18 @@ class ApiClient {
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('text/html')) {
         throw new Error(
-          'API returned HTML instead of JSON. Backend service is not connected. Please set your Railway Backend URL in Settings (⚙) or configure VITE_API_URL in Vercel.'
+          'API returned HTML instead of JSON. Backend service is not reachable at ' + url
         );
       }
 
       if (response.status === 405) {
         throw new Error(
-          'HTTP 405 Method Not Allowed. The frontend is requesting static Vercel routes instead of your live Railway backend. Please set your Railway Backend URL in Settings (⚙) or configure VITE_API_URL in Vercel.'
+          'HTTP 405 Method Not Allowed on ' + url
         );
       }
 
-      // Auto handle 401 Unauthorized by obtaining a fresh guest session
-      if (response.status === 401 && !endpoint.includes('/auth/')) {
-        await this.createGuestSession();
-        // Retry original request with fresh credentials
-        return await this.request(endpoint, options);
+      if (response.status === 401) {
+        this.setToken('');
       }
 
       if (!response.ok) {

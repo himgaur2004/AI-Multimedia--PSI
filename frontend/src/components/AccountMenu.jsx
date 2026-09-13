@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 
-export default function AccountMenu({ user, onClose, onOpenSettings, onOpenAuth }) {
+export default function AccountMenu({ user, onClose, onOpenSettings, onOpenAuth, onLogout }) {
   const menuRef = useRef(null);
 
   // Click-outside listener with cleanup to prevent memory leaks
@@ -34,7 +34,7 @@ export default function AccountMenu({ user, onClose, onOpenSettings, onOpenAuth 
             onClose();
             onOpenSettings();
           }}
-          className="w-full text-left px-2.5 py-1.5 rounded-[2px] hover:bg-line/40 transition-colors flex items-center justify-between"
+          className="w-full text-left px-2.5 py-1.5 rounded-[2px] hover:bg-line/40 transition-colors flex items-center justify-between cursor-pointer"
         >
           <span>OpenAI Key & Models</span>
           <span className="font-mono text-[10px] text-sub">⚙</span>
@@ -45,11 +45,24 @@ export default function AccountMenu({ user, onClose, onOpenSettings, onOpenAuth 
             onClose();
             onOpenAuth();
           }}
-          className="w-full text-left px-2.5 py-1.5 rounded-[2px] hover:bg-line/40 transition-colors flex items-center justify-between"
+          className="w-full text-left px-2.5 py-1.5 rounded-[2px] hover:bg-line/40 transition-colors flex items-center justify-between cursor-pointer"
         >
           <span>{user?.is_guest ? 'Sign in / Register' : 'Switch Account'}</span>
           <span className="font-mono text-[10px] text-sub">→</span>
         </button>
+
+        {onLogout && (
+          <button
+            onClick={() => {
+              onClose();
+              onLogout();
+            }}
+            className="w-full text-left px-2.5 py-1.5 rounded-[2px] hover:bg-red-500/10 text-red-700 hover:text-red-900 transition-colors flex items-center justify-between cursor-pointer"
+          >
+            <span>Sign Out</span>
+            <span className="font-mono text-[10px]">⎋</span>
+          </button>
+        )}
 
         <a
           href="/docs"

@@ -6,6 +6,7 @@ import SummaryPanel from './components/SummaryPanel.jsx';
 import LibraryView from './components/LibraryView.jsx';
 import ApiKeyModal from './components/modals/ApiKeyModal.jsx';
 import AuthModal from './components/modals/AuthModal.jsx';
+import AuthGateway from './components/auth/AuthGateway.jsx';
 import { useDocumentWorkspace } from './hooks/useDocumentWorkspace.js';
 import { useChatStream } from './hooks/useChatStream.js';
 import { api } from './services/api.js';
@@ -14,6 +15,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('workspace'); // 'workspace' | 'library'
   const [workspaceMode, setWorkspaceMode] = useState('media'); // 'documents' | 'media'
   const [user, setUser] = useState(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [gptModel, setGptModel] = useState('gpt-4o-mini');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -41,32 +43,44 @@ export default function App() {
 
   const [backendError, setBackendError] = useState(null);
 
-  const initUser = async () => {
-    try {
-      setBackendError(null);
-      let me = null;
-      try {
-        me = await api.getMe();
-      } catch (meErr) {
-        if (meErr.message && (meErr.message.includes('Backend') || meErr.message.includes('405') || meErr.message.includes('Unexpected token') || meErr.message.includes('HTML'))) {
-          throw meErr;
+  // Check for an existing authenticated session on initial mount
+  useEffect(() => {
+    const checkSession = async () => {
+      setIsCheckingAuth(true);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('psi_token') : null;
+      if (token) {
+        try {
+          const me = await api.getMe();
+          setUser(me);
+          setBackendError(null);
+          await refreshSources();
+        } catch (err) {
+          console.warn('[Session token invalid or expired]', err);
+          api.logout();
+          setUser(null);
         }
-        const guest = await api.createGuestSession();
-        me = guest.user;
+      } else {
+        setUser(null);
       }
-      setUser(me);
-      setBackendError(null);
+      setIsCheckingAuth(false);
+    };
+    checkSession();
+  }, []);
+
+  const handleAuthSuccess = async (authenticatedUser) => {
+    setUser(authenticatedUser);
+    setBackendError(null);
+    try {
       await refreshSources();
     } catch (err) {
-      console.error('[App Init Error]', err);
-      setBackendError(err.message || 'Failed to connect to backend server');
+      console.error('[Failed to refresh sources]', err);
     }
   };
 
-  // Initialize guest session and initial file list ONCE on mount
-  useEffect(() => {
-    initUser();
-  }, []);
+  const handleLogout = () => {
+    api.logout();
+    setUser(null);
+  };
 
   const handleWorkspaceModeChange = (newMode) => {
     setWorkspaceMode(newMode);
@@ -96,6 +110,43 @@ export default function App() {
     }
     await handleUpload(file);
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="h-screen w-screen bg-paper flex flex-col items-center justify-center font-mono text-xs text-sub">
+        <div className="w-11 h-11 rounded-lg bg-[#141413] flex items-center justify-center p-2 mb-3 shadow-md animate-pulse">
+          <img src="/psi-icon-white.webp" alt="PSI" className="w-full h-full object-contain" />
+        </div>
+        <div className="font-semibold text-ink">Loading Pan Science Innovation…</div>
+        <div className="text-[11px] text-sub mt-1">Verifying research session</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        {toastMessage && (
+          <div className="fixed bottom-4 right-4 z-50 bg-ink text-paper text-xs font-mono py-2 px-3.5 rounded-[2px] shadow-lg flex items-center gap-2 animate-fade-in">
+            <span className="text-accent font-bold">✦</span> {toastMessage}
+          </div>
+        )}
+
+        <AuthGateway
+          onSuccess={handleAuthSuccess}
+          onOpenSettings={() => setShowSettingsModal(true)}
+        />
+
+        <ApiKeyModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          gptModel={gptModel}
+          setGptModel={setGptModel}
+          onSettingsSaved={() => setBackendError(null)}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="h-screen max-h-screen w-screen overflow-hidden bg-paper text-ink font-body flex flex-col">
@@ -131,6 +182,7 @@ export default function App() {
         user={user}
         onOpenSettings={() => setShowSettingsModal(true)}
         onOpenAuth={() => setShowAuthModal(true)}
+        onLogout={handleLogout}
         onRefresh={() => refreshSources()}
       />
 

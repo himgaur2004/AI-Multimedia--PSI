@@ -22,6 +22,7 @@ export default function TopBar({
   user,
   onOpenSettings,
   onOpenAuth,
+  onLogout,
   onRefresh,
 }) {
   const [accountOpen, setAccountOpen] = useState(false);
@@ -98,6 +99,7 @@ export default function TopBar({
               onClose={() => setAccountOpen(false)}
               onOpenSettings={onOpenSettings}
               onOpenAuth={onOpenAuth}
+              onLogout={onLogout}
             />
           )}
         </div>
