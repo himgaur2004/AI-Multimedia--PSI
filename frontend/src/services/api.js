@@ -10,6 +10,7 @@ class ApiClient {
   constructor() {
     this.token = typeof window !== 'undefined' ? (localStorage.getItem('psi_token') || '') : '';
     this.apiKeyOverride = typeof window !== 'undefined' ? (localStorage.getItem('psi_openai_key') || '') : '';
+    this.geminiApiKeyOverride = typeof window !== 'undefined' ? (localStorage.getItem('psi_gemini_key') || '') : '';
   }
 
   getBaseUrl() {
@@ -83,6 +84,17 @@ class ApiClient {
         localStorage.setItem('psi_openai_key', key);
       } else {
         localStorage.removeItem('psi_openai_key');
+      }
+    }
+  }
+
+  setGeminiApiKeyOverride(key) {
+    this.geminiApiKeyOverride = key;
+    if (typeof window !== 'undefined') {
+      if (key) {
+        localStorage.setItem('psi_gemini_key', key);
+      } else {
+        localStorage.removeItem('psi_gemini_key');
       }
     }
   }
@@ -239,6 +251,7 @@ class ApiClient {
           message,
           chat_history: chatHistory.length > 0 ? chatHistory : undefined,
           api_key_override: this.apiKeyOverride || undefined,
+          gemini_api_key_override: this.geminiApiKeyOverride || undefined,
           search_mode: searchMode || 'inbuilt',
           model: model || undefined,
         }),
@@ -254,6 +267,7 @@ class ApiClient {
             message,
             chat_history: chatHistory.length > 0 ? chatHistory : undefined,
             api_key_override: this.apiKeyOverride || undefined,
+            gemini_api_key_override: this.geminiApiKeyOverride || undefined,
             search_mode: searchMode || 'inbuilt',
             model: model || undefined,
           }),

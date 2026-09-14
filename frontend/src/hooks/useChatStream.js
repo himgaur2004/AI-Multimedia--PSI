@@ -85,7 +85,10 @@ export function useChatStream(activeFile) {
       setIsStreaming(true);
       setStreamedText('');
 
-      const backendSearchMode = searchMode === 'llm' ? 'gpt' : 'inbuilt';
+      let backendSearchMode = searchMode;
+      if (searchMode === 'rag') backendSearchMode = 'inbuilt';
+      if (searchMode === 'llm') backendSearchMode = 'gpt';
+
       const chatHistoryForBackend = messages.map((m) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.text,
@@ -110,7 +113,7 @@ export function useChatStream(activeFile) {
             citations,
             follow_ups: followUps,
             searchMode,
-            engine: engine || (searchMode === 'llm' ? `OpenAI ${gptModel}` : 'Inbuilt RAG / Vector Search'),
+            engine: engine || (backendSearchMode === 'gemini' ? 'Google Gemini' : backendSearchMode === 'gpt' ? `OpenAI ${gptModel}` : backendSearchMode === 'langchain' ? 'LangChain RAG' : 'Inbuilt RAG / Vector Search'),
             retrievalMethod,
           },
         ]);
@@ -143,7 +146,7 @@ export function useChatStream(activeFile) {
           onError,
           chatHistoryForBackend,
           backendSearchMode,
-          searchMode === 'llm' ? gptModel : null,
+          backendSearchMode === 'gpt' ? gptModel : (backendSearchMode === 'gemini' ? 'gemini-1.5-flash' : null),
           abortControllerRef.current.signal
         );
       } catch (err) {

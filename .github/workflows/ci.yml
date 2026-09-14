@@ -122,30 +122,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── 4. Deploy backend → Railway ──────────────────────────────────────────────
-  deploy-backend:
-    name: "Deploy Backend → Railway"
-    needs: [docker-build]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    environment:
-      name: production
-      url: ${{ vars.RAILWAY_BACKEND_URL }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "RAILWAY_TOKEN secret not configured. Skipping automated Railway deployment."
-            exit 0
-          fi
-          npm install -g @railway/cli
-          railway up --service psi-backend --detach
-
-  # ── 5. Deploy frontend → Vercel ─────────────────────────────────────────────
+  # ── 4. Deploy frontend → Vercel ─────────────────────────────────────────────
   deploy-frontend:
     name: "Deploy Frontend → Vercel"
     needs: [docker-build]

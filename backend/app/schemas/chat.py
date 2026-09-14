@@ -29,8 +29,9 @@ class ChatMessageSchema(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     api_key_override: Optional[str] = None
+    gemini_api_key_override: Optional[str] = None
     chat_history: Optional[List[dict]] = None
-    search_mode: Optional[str] = None  # 'inbuilt' (self-built RAG + vector search) or 'gpt' (OpenAI LLM)
+    search_mode: Optional[str] = None  # 'inbuilt', 'langchain', 'gemini', 'gpt'
     model: Optional[str] = None
 
 

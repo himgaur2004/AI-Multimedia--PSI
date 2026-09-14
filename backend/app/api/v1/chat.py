@@ -61,6 +61,7 @@ def chat_with_document(
         query=request.message,
         file_type=doc["file_type"],
         api_key_override=request.api_key_override or "",
+        gemini_api_key_override=request.gemini_api_key_override or "",
         chat_history=request.chat_history or [],
         search_mode=request.search_mode or "inbuilt",
         model_override=request.model
@@ -126,6 +127,7 @@ async def chat_stream_with_document(
             query=request.message,
             file_type=doc["file_type"],
             api_key_override=request.api_key_override or "",
+            gemini_api_key_override=request.gemini_api_key_override or "",
             chat_history=request.chat_history or [],
             search_mode=request.search_mode or "inbuilt",
             model_override=request.model

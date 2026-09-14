@@ -3,15 +3,16 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB.svg?style=flat&logo=react)](https://reactjs.org)
 [![LangChain](https://img.shields.io/badge/LangChain-Enabled-1C3C3C.svg?style=flat)](https://python.langchain.com)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-1.5_Flash_%26_Pro-8E75B2.svg?style=flat&logo=google)](https://deepmind.google/technologies/gemini/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991.svg?style=flat&logo=openai)](https://openai.com)
 [![FAISS](https://img.shields.io/badge/Vector_Search-FAISS-00599C.svg?style=flat)](https://github.com/facebookresearch/faiss)
 [![Redis](https://img.shields.io/badge/Cache-Redis_&_InMemory-DC382D.svg?style=flat&logo=redis)](https://redis.io)
-[![Test Coverage](https://img.shields.io/badge/Coverage-95.01%25-brightgreen.svg?style=flat)](https://pytest.org)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg?style=flat&logo=docker)](https://docker.com)
+[![Test Coverage](https://img.shields.io/badge/Coverage-95.23%25-brightgreen.svg?style=flat)](https://pytest.org)
 [![AWS EC2](https://img.shields.io/badge/AWS-EC2_Production-FF9900.svg?style=flat&logo=amazonaws)](https://aws.amazon.com/ec2/)
 [![SSL](https://img.shields.io/badge/SSL-Let's_Encrypt_Auto_TLS-003A70.svg?style=flat&logo=letsencrypt)](https://letsencrypt.org)
 [![CI/CD](https://img.shields.io/badge/GitHub_Actions-Automated_CI-2088FF.svg?style=flat&logo=githubactions)](https://github.com/features/actions)
 
-**PSI (Pan Science Innovation)** is an enterprise-grade AI-powered document and multimedia intelligence portal. It enables researchers, engineers, and students to upload **PDF documents, video recordings (MP4/WebM/MKV), and audio tracks (MP3/WAV)**, query them via conversational real-time streaming, extract structured **executive summaries**, and seamlessly navigate synchronized **topic chapters** with interactive video seeking to exact cited timecodes.
+**PSI (Pan Science Innovation)** is an enterprise-grade AI-powered document and multimedia intelligence portal. It enables researchers, engineers, and students to upload **PDF documents, video recordings (MP4/WebM/MKV), and audio tracks (MP3/WAV)**, query them via conversational real-time streaming using **4 search engines (Local FAISS RAG, LangChain RAG, Google Gemini, and OpenAI GPT)**, extract structured **executive summaries**, and seamlessly navigate synchronized **topic chapters** with interactive video seeking to exact cited timecodes.
 
 ---
 
@@ -77,13 +78,21 @@
 
 ## ⚡ Key Innovations & Features
 
-### 1. Dual-Engine RAG (Retrieval-Augmented Generation)
+### 1. Quad-Engine RAG (Retrieval-Augmented Generation) & Search Modes
 - **Mode 1: Inbuilt RAG / FAISS Semantic Search ($0.00 Cost)**
   - Runs 100% locally with zero external API fees.
   - Generates TF-IDF sparse matrices and dense vector projections normalized via FAISS L2 indexing (`IndexFlatIP`).
   - Employs **morphological stem-aware keyword boosting** (automatically matches plural/singular variants like `"projects"` ↔ `"project"`).
   - Synthesizes grounded multi-bullet answers citing exact `[Page X]` or `[MM:SS]` timecodes.
-- **Mode 2: GPT LLM Mode (Conversational AI)**
+- **Mode 2: LangChain RAG Search Engine**
+  - Utilizes LangChain's retrieval pipeline architecture over FAISS document chunks.
+  - Formats grounded retrieval contexts with structured prompt templates and output parsers.
+  - Interoperable with both Google Gemini and OpenAI LLMs for real-time streaming synthesis.
+- **Mode 3: Google Gemini LLM Mode (Gemini 1.5 Flash / Pro)**
+  - Connects directly to Google's Generative Language API via streaming SSE (`streamGenerateContent?alt=sse`).
+  - Zero heavy SDK dependencies; lightning-fast token generation with strict context grounding.
+  - Automatically falls back to Inbuilt FAISS Engine if API quota is exceeded or keys are invalid.
+- **Mode 4: OpenAI GPT LLM Mode (Conversational AI)**
   - Connects to OpenAI `gpt-4o-mini` or `gpt-4o` using real-time **Server-Sent Events (SSE)** token streaming.
   - Automatically falls back to the Inbuilt FAISS Engine if OpenAI API credits are exhausted (`insufficient_quota`), displaying the exact reason on the engine status badge.
 
@@ -119,7 +128,7 @@
 | **Interactive Video Seeking** | Interactive `[MM:SS]` badges in chat and summary panels that jump player to cited timestamps | ✅ Complete |
 | **HTTP Byte-Range Streaming** | RFC 7233 Partial Content (HTTP 206) media streaming for instantaneous audio/video playback | ✅ Complete |
 | **Executive Summarization** | Dynamic extractive document summarizer with bullet points, topic chapters, and word metrics | ✅ Complete |
-| **Automated Testing (95%+)** | **88 automated Pytest unit & integration tests with 95.01% coverage** enforced via `pytest.ini` | ✅ Complete |
+| **Automated Testing (95%+)** | **99 automated Pytest unit & integration tests with 95.23% coverage** enforced via `pytest.ini` | ✅ Complete |
 | **Production Dockerization** | Lean single-stage Dockerfile, Docker Compose, Nginx reverse proxy, and unprivileged user | ✅ Complete |
 | **AWS EC2 Production Stack** | Live on AWS EC2 (`15.252.181.80`) with automatic HTTPS Let's Encrypt SSL via Caddy + nip.io | ✅ Complete |
 | **CI/CD Pipeline** | GitHub Actions workflow executing backend tests, frontend builds, and Docker validation on push | ✅ Complete |
@@ -254,33 +263,34 @@ pytest --cov=app --cov-report=term-missing --cov-fail-under=95
 Name                                    Stmts   Miss  Cover   Missing
 ---------------------------------------------------------------------
 app/api/v1/auth.py                         97      0   100%
-app/api/v1/chat.py                         81      4    95%   141-142, 156-157
+app/api/v1/chat.py                         81      4    95%   143-144, 158-159
 app/api/v1/documents.py                    94      3    97%   38, 271-272
 app/api/v1/media.py                        42      1    98%   36
 app/api/v1/router.py                       12      0   100%
 app/api/v1/summary.py                      53      2    96%   53-54
 app/core/cache.py                         105      5    95%   19-20, 37, 58-59
-app/core/config.py                         42      0   100%
+app/core/config.py                         44      0   100%
 app/core/database.py                       54      3    94%   22, 30-31
 app/core/mongo.py                         121      9    93%   65-66, 78-80, 91-92, 178-179
 app/core/rate_limit.py                     49      1    98%   46
 app/core/security.py                       74      3    96%   65-66, 117
 app/main.py                                50      4    92%   68, 85, 99-100
 app/schemas/auth.py                        39      0   100%
-app/schemas/chat.py                        32      0   100%
+app/schemas/chat.py                        33      0   100%
 app/schemas/document.py                    28      0   100%
 app/schemas/summary.py                     22      0   100%
 app/services/document_service.py          122      8    93%   75, 106, 131-132, 156-158, 192
-app/services/rag_service.py               191     10    95%   28-30, 49-53, 204, 337
+app/services/gemini_service.py             55      0   100%
+app/services/rag_service.py               323     15    95%   29-31, 52-56, 301, 413-414, 448-449, 471, 564
 app/services/rag_synthesizer.py           133      1    99%   186
 app/services/summary_service.py           143     15    90%   17-19, 36-40, 85-86, 156-157, 218, 276, 290
 app/services/transcription_service.py     135     15    89%   19-21, 25-26, 61-65, 112, 156-157, 173-174
 app/services/vector_service.py            146      9    94%   15-16, 67-68, 74, 93-94, 129-130
 ---------------------------------------------------------------------
-TOTAL                                    1865     93    95%
+TOTAL                                    2055     98    95%
 
-============================= 88 passed in 10.10s ==============================
-Required test coverage of 95% reached. Total coverage: 95.01%
+============================= 99 passed in 11.34s ==============================
+Required test coverage of 95% reached. Total coverage: 95.23%
 ```
 
 ---
@@ -299,7 +309,7 @@ All endpoints are prefixed with `/api/v1`.
 | `GET` | `/documents/list` | List all indexed documents for authenticated user | Yes (Bearer) |
 | `GET` | `/documents/{id}` | Retrieve document metadata, text, and speech transcripts | Yes (Bearer) |
 | `DELETE`| `/documents/{id}` | Delete document, associated vectors, and stored media | Yes (Bearer) |
-| `POST` | `/documents/{id}/chat` | Query document using RAG (Inbuilt FAISS or GPT LLM) | Yes (Bearer) |
+| `POST` | `/documents/{id}/chat` | Query document using RAG (Inbuilt FAISS, LangChain, Gemini, GPT) | Yes (Bearer) |
 | `POST` | `/documents/{id}/chat/stream` | Stream grounded answers token-by-token via SSE | Yes (Bearer) |
 | `GET` | `/documents/{id}/messages` | Fetch complete conversation history for document | Yes (Bearer) |
 | `GET` | `/documents/{id}/summary` | Retrieve dynamic executive summary and key points | Yes (Bearer) |
@@ -320,8 +330,8 @@ multimedia-qa-app/
 │   │   ├── api/v1/            # API Route handlers (auth, documents, chat, media, summary)
 │   │   ├── core/              # Config, database manager, security, rate limiting, cache
 │   │   ├── schemas/           # Pydantic data contracts (auth, document, chat, summary)
-│   │   └── services/          # Business logic (vector_service, rag_service, summary_service)
-│   ├── tests/                 # Comprehensive test suite (88 tests, 95.01% coverage)
+│   │   └── services/          # Business logic (vector_service, rag_service, gemini_service, summary_service)
+│   ├── tests/                 # Comprehensive test suite (99 tests, 95.23% coverage)
 │   ├── Dockerfile             # Production lean single-stage Dockerfile
 │   ├── requirements.txt       # Production dependencies
 │   ├── requirements-test.txt  # Test dependencies (pytest, pytest-cov, pytest-mock)

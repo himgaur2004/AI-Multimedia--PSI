@@ -71,7 +71,7 @@ export default function ChatPanel({
           <span>02 — ask psi</span>
           <span className="text-line">|</span>
           <span className="text-[10.5px]">
-            {searchMode === 'rag' ? 'Local RAG Mode' : 'GPT LLM Mode'}
+            {searchMode === 'gemini' ? '💎 Google Gemini' : searchMode === 'langchain' ? '🦜🔗 LangChain RAG' : searchMode === 'gpt' ? '🤖 OpenAI GPT' : '⚡ Local RAG'}
           </span>
         </div>
         {activeFile ? (
@@ -202,29 +202,55 @@ export default function ChatPanel({
             />
 
             {/* Bottom bar inside card: Mode Selector (Left) & Send Arrow Button (Right) */}
-            <div className="flex items-center justify-between pt-2 mt-1 border-t border-line/40 px-1">
-              <div className="flex border border-line rounded-full overflow-hidden text-[10.5px] font-mono">
+            <div className="flex items-center justify-between pt-2 mt-1 border-t border-line/40 px-1 gap-2">
+              <div className="flex border border-line rounded-full overflow-hidden text-[10px] font-mono bg-paper">
                 <button
                   type="button"
                   onClick={() => setSearchMode('rag')}
-                  className={`px-2.5 py-0.8 transition-colors ${
+                  className={`px-2 py-0.5 transition-colors ${
                     searchMode === 'rag'
                       ? 'bg-ink text-paper font-semibold'
-                      : 'bg-paper text-sub hover:text-ink'
+                      : 'text-sub hover:text-ink'
                   }`}
+                  title="Inbuilt FAISS Vector Search & Deterministic RAG"
                 >
-                  Local RAG
+                  ⚡ Local RAG
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSearchMode('llm')}
-                  className={`px-2.5 py-0.8 transition-colors border-l border-line ${
-                    searchMode === 'llm'
+                  onClick={() => setSearchMode('langchain')}
+                  className={`px-2 py-0.5 transition-colors border-l border-line ${
+                    searchMode === 'langchain'
                       ? 'bg-ink text-paper font-semibold'
-                      : 'bg-paper text-sub hover:text-ink'
+                      : 'text-sub hover:text-ink'
                   }`}
+                  title="LangChain Pipeline Retrieval"
                 >
-                  GPT LLM
+                  🦜🔗 LangChain
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchMode('gemini')}
+                  className={`px-2 py-0.5 transition-colors border-l border-line ${
+                    searchMode === 'gemini'
+                      ? 'bg-ink text-paper font-semibold'
+                      : 'text-sub hover:text-ink'
+                  }`}
+                  title="Google Gemini 1.5 Flash Grounding"
+                >
+                  💎 Gemini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchMode('gpt')}
+                  className={`px-2 py-0.5 transition-colors border-l border-line ${
+                    searchMode === 'gpt'
+                      ? 'bg-ink text-paper font-semibold'
+                      : 'text-sub hover:text-ink'
+                  }`}
+                  title="OpenAI GPT Model Grounding"
+                >
+                  🤖 GPT
                 </button>
               </div>
 

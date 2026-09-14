@@ -56,17 +56,24 @@ fi
 cd "$APP_DIR"
 
 # 5. Generate .env file if not exists
-cat <<EOF > .env
+if [ ! -f .env ]; then
+    echo "📝 Generating new .env configuration file..."
+    cat <<EOF > .env
 PROJECT_NAME="PSI - AI Document & Multimedia Q&A"
 VERSION=1.0.0
 SECRET_KEY="psi_aws_ec2_production_secret_key_$(openssl rand -hex 16)"
-DATABASE_URL="mongodb+srv://himgaursingh_db_user:himgaursingh1@cluster0.ieebzgz.mongodb.net/psi_db?authSource=admin&retryWrites=true&w=majority"
-MONGODB_URL="mongodb+srv://himgaursingh_db_user:himgaursingh1@cluster0.ieebzgz.mongodb.net/psi_db?authSource=admin&retryWrites=true&w=majority"
+DATABASE_URL="${DATABASE_URL:-sqlite:////app/uploads/psi.db}"
+MONGODB_URL="${MONGODB_URL:-}"
 CORS_ORIGINS="https://ai-multimedia-psi.vercel.app,http://localhost:5173,http://localhost:3000"
-OPENAI_API_KEY=""
+OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 DOMAIN="${DOMAIN}"
 PORT=8000
 EOF
+    echo "ℹ️ .env created. If you use MongoDB Atlas, add your connection string to MONGODB_URL in .env"
+else
+    echo "ℹ️ Existing .env file found. Preserving current secrets and database configuration."
+fi
 
 # 6. Build and launch Docker Compose stack with Caddy automatic SSL
 echo "🐳 Launching Docker Compose stack with backend + Caddy SSL..."

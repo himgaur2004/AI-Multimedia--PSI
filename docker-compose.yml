@@ -1,6 +1,6 @@
 # PSI — AI Document & Multimedia Q&A
 # Local development / self-hosted production stack.
-# For cloud deployment:  backend → Railway, frontend → Vercel (see .github/workflows/deploy.yml)
+# For cloud deployment:  backend → AWS EC2 / Docker, frontend → Vercel
 
 services:
   backend:

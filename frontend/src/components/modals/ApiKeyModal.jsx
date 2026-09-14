@@ -3,12 +3,14 @@ import { api } from '../../services/api';
 
 export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel, onSettingsSaved }) {
   const [keyInput, setKeyInput] = useState('');
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
   const [backendUrl, setBackendUrl] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setKeyInput(localStorage.getItem('psi_openai_key') || '');
+      setGeminiKeyInput(localStorage.getItem('psi_gemini_key') || '');
       setBackendUrl(api.getBackendUrl() || '');
       setSavedSuccess(false);
     }
@@ -18,10 +20,16 @@ export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel, on
 
   const handleSave = () => {
     api.setApiKeyOverride(keyInput.trim());
+    api.setGeminiApiKeyOverride(geminiKeyInput.trim());
     api.setBackendUrl(backendUrl.trim());
     setSavedSuccess(true);
     if (onSettingsSaved) {
-      onSettingsSaved({ gptModel, apiKey: keyInput.trim(), backendUrl: backendUrl.trim() });
+      onSettingsSaved({
+        gptModel,
+        apiKey: keyInput.trim(),
+        geminiKey: geminiKeyInput.trim(),
+        backendUrl: backendUrl.trim()
+      });
     }
     setTimeout(() => {
       setSavedSuccess(false);
@@ -31,12 +39,14 @@ export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel, on
 
   const handleClear = () => {
     api.setApiKeyOverride('');
+    api.setGeminiApiKeyOverride('');
     api.setBackendUrl('');
     setKeyInput('');
+    setGeminiKeyInput('');
     setBackendUrl('');
     setSavedSuccess(true);
     if (onSettingsSaved) {
-      onSettingsSaved({ gptModel, apiKey: '', backendUrl: '' });
+      onSettingsSaved({ gptModel, apiKey: '', geminiKey: '', backendUrl: '' });
     }
     setTimeout(() => {
       setSavedSuccess(false);
@@ -80,7 +90,25 @@ export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel, on
           </div>
         </div>
 
-        {/* Custom API Key */}
+        {/* Google Gemini API Key */}
+        <div className="mb-4">
+          <label className="block font-mono text-xs text-sub mb-1.5 flex items-center justify-between">
+            <span>Google Gemini API Key</span>
+            <span className="text-[10px] text-accent font-semibold">gemini-1.5-flash / pro</span>
+          </label>
+          <input
+            type="password"
+            value={geminiKeyInput}
+            onChange={(e) => setGeminiKeyInput(e.target.value)}
+            placeholder="AIzaSy..."
+            className="w-full text-xs font-mono bg-panel border border-line p-2.5 rounded-[2px] outline-none placeholder:text-sub focus:border-ink"
+          />
+          <p className="text-[11px] text-sub mt-1 leading-snug">
+            Powers Gemini LLM search and LangChain + Gemini streaming. Keys are stored locally in your browser.
+          </p>
+        </div>
+
+        {/* Custom OpenAI API Key */}
         <div className="mb-4">
           <label className="block font-mono text-xs text-sub mb-1.5">
             Custom OpenAI API Key <span className="text-[10.5px]">(Optional)</span>
@@ -93,8 +121,7 @@ export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel, on
             className="w-full text-xs font-mono bg-panel border border-line p-2.5 rounded-[2px] outline-none placeholder:text-sub focus:border-ink"
           />
           <p className="text-[11px] text-sub mt-1 leading-snug">
-            Leave blank to utilize the server&apos;s inbuilt vector synthesizer &amp; demo keys. Keys
-            are stored locally in your browser.
+            Powers GPT LLM &amp; LangChain + OpenAI search. Keys are stored locally in your browser.
           </p>
         </div>
 
