@@ -146,7 +146,7 @@ export function useChatStream(activeFile) {
           onError,
           chatHistoryForBackend,
           backendSearchMode,
-          backendSearchMode === 'gpt' ? gptModel : (backendSearchMode === 'gemini' ? 'gemini-1.5-flash' : null),
+          backendSearchMode === 'gpt' ? gptModel : (backendSearchMode === 'gemini' ? 'gemini-3.6-flash' : null),
           abortControllerRef.current.signal
         );
       } catch (err) {

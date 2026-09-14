@@ -17,12 +17,17 @@ class GeminiService:
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
     def __init__(self):
-        self.default_model = settings.GEMINI_MODEL or "gemini-1.5-flash"
+        self.default_model = settings.GEMINI_MODEL or "gemini-3.6-flash"
         self.default_api_key = settings.GEMINI_API_KEY or ""
 
     def _resolve_config(self, api_key: Optional[str] = None, model: Optional[str] = None) -> tuple[str, str]:
         key = (api_key or self.default_api_key or "").strip()
-        mdl = (model or self.default_model or "gemini-1.5-flash").strip()
+        mdl = (model or self.default_model or "gemini-3.6-flash").strip()
+        # Automatically map deprecated/legacy model names to active Google Generative AI models
+        if mdl in {"gemini-1.5-flash", "gemini-2.5-flash", "gemini-1.0-pro", "gemini-pro"}:
+            mdl = "gemini-3.6-flash"
+        elif mdl in {"gemini-1.5-pro", "gemini-2.5-pro"}:
+            mdl = "gemini-3.6-flash"
         return key, mdl
 
     def generate_response(

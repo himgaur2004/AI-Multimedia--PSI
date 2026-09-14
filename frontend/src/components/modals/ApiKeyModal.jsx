@@ -94,7 +94,7 @@ export default function ApiKeyModal({ isOpen, onClose, gptModel, setGptModel, on
         <div className="mb-4">
           <label className="block font-mono text-xs text-sub mb-1.5 flex items-center justify-between">
             <span>Google Gemini API Key</span>
-            <span className="text-[10px] text-accent font-semibold">gemini-1.5-flash / pro</span>
+            <span className="text-[10px] text-accent font-semibold">gemini-3.6-flash</span>
           </label>
           <input
             type="password"
